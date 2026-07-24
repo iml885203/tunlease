@@ -1,12 +1,23 @@
 # <img src="assets/icon.png" width="32" height="32" alt=""> Tunlease
 
-Route a path on a third party's fixed endpoint to a local development environment without asking the third party to change its URL.
+**Debug a webhook on your laptop using its real, unchangeable callback URL — no redeploy, no new URL.**
+
+Claim one path on an existing fixed endpoint; its live traffic reaches your
+laptop while every other path keeps serving the real app. Ctrl+C to release.
+
+```bash
+tunle claim /webhooks/stripe/* --to 8080 --gateway staging.myapp.com
+```
 
 ![A fixed callback URL returns the app's 404 until you claim its path, then reaches a server on your laptop — on the same URL](assets/demo.gif)
+
+Unlike ngrok/localtunnel/bore, it does **not** give you a new URL. [How it compares](#how-it-compares).
 
 [Developer quick start](#quick-start-for-developers) · [Platform setup](docs/platform-deployment.md) · [Architecture](docs/architecture.md) · [Troubleshooting](docs/developer-guide.md#troubleshooting)
 
 [English](README.md) · [繁體中文](README.zh-TW.md)
+
+## How it works
 
 ```mermaid
 flowchart LR

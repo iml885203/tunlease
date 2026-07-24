@@ -1,12 +1,23 @@
 # <img src="assets/icon.png" width="32" height="32" alt=""> Tunlease
 
-把第三方固定 endpoint 的特定 path，暫時轉送到開發者本機；第三方不需要更換 URL。
+**在自己電腦上 debug webhook，用它真實、改不了的 callback URL——不重新部署、不換新 URL。**
+
+在既有的固定 endpoint 上認領一條 path，它的即時流量就進到你的電腦，而其他 path
+照常打到真正的 app。Ctrl+C 釋放。
+
+```bash
+tunle claim /webhooks/stripe/* --to 8080 --gateway staging.myapp.com
+```
 
 ![claim 前固定 callback URL 回 app 的 404，`tunle claim` 後同一 URL 打到本機服務](assets/demo.gif)
+
+跟 ngrok/localtunnel/bore 不同，它**不會**給你一個新 URL。[與其他工具的比較](#與其他工具的比較)。
 
 [開發者快速上手](#開發者快速上手) · [平台部署](docs/platform-deployment.zh-TW.md) · [架構](docs/architecture.zh-TW.md) · [疑難排解](docs/developer-guide.zh-TW.md#疑難排解)
 
 [English](README.md) · [繁體中文](README.zh-TW.md)
+
+## 運作方式
 
 ```mermaid
 flowchart LR
