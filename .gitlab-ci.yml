@@ -81,7 +81,7 @@ release-cli:
     - BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     - |
       for PAIR in "linux/amd64" "linux/arm64" "darwin/amd64" "darwin/arm64" "windows/amd64"; do
-        OS=${PAIR%/*}; ARCH=${PAIR#*/}; NAME="tunlease-${OS}-${ARCH}"
+        OS=${PAIR%/*}; ARCH=${PAIR#*/}; NAME="tunle-${OS}-${ARCH}"
         [ "$OS" = "windows" ] && NAME="${NAME}.exe"
         GOOS=$OS GOARCH=$ARCH CGO_ENABLED=0 go build \
           -ldflags "-s -w -X 'main.version=${VERSION}' -X 'main.buildTime=${BUILD_TIME}'" \
@@ -90,16 +90,16 @@ release-cli:
       done
     - |
       if [ -n "${CI_COMMIT_TAG:-}" ]; then
-        for FILE in tunlease-*; do
+        for FILE in tunle-*; do
           URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/tunlease/${CI_COMMIT_TAG}/${FILE}"
           curl --fail --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file "$FILE" "$URL"
         done
       fi
   artifacts:
     paths:
-      - tunlease-linux-*
-      - tunlease-darwin-*
-      - tunlease-windows-*
+      - tunle-linux-*
+      - tunle-darwin-*
+      - tunle-windows-*
     expire_in: 1 day
   rules:
     - if: '$CI_COMMIT_BRANCH == "master"'

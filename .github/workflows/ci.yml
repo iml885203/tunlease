@@ -92,7 +92,7 @@ jobs:
           VERSION="${GITHUB_REF_NAME}"
           BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           for PAIR in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
-            OS=${PAIR%/*}; ARCH=${PAIR#*/}; NAME="tunlease-${OS}-${ARCH}"
+            OS=${PAIR%/*}; ARCH=${PAIR#*/}; NAME="tunle-${OS}-${ARCH}"
             [ "$OS" = "windows" ] && NAME="${NAME}.exe"
             GOOS=$OS GOARCH=$ARCH CGO_ENABLED=0 go build \
               -ldflags "-s -w -X 'main.version=${VERSION}' -X 'main.buildTime=${BUILD_TIME}'" \
@@ -103,6 +103,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            tunlease-linux-*
-            tunlease-darwin-*
-            tunlease-windows-*
+            tunle-linux-*
+            tunle-darwin-*
+            tunle-windows-*

@@ -22,7 +22,7 @@ const defaultReleaseURL = "https://tunlease.example.com/install"
 func newUpdateCommand(current string) *cobra.Command {
 	var baseURL string
 	cmd := &cobra.Command{
-		Use: "update", Short: "Update tunlease from the release page", Args: cobra.NoArgs,
+		Use: "update", Short: "Update Tunlease from the release page", Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if baseURL == "" {
 				baseURL = os.Getenv("TUNLEASE_BASE_URL")
@@ -35,7 +35,7 @@ func newUpdateCommand(current string) *cobra.Command {
 				return err
 			}
 			path, _ = filepath.EvalSymlinks(path)
-			name := fmt.Sprintf("tunlease-%s-%s", runtime.GOOS, runtime.GOARCH)
+			name := fmt.Sprintf("tunle-%s-%s", runtime.GOOS, runtime.GOARCH)
 			if runtime.GOOS == "windows" {
 				name += ".exe"
 			}
@@ -69,7 +69,7 @@ func newUpdateCommand(current string) *cobra.Command {
 				_ = os.Rename(path+".prev", path)
 				return fmt.Errorf("install update: %w", err)
 			}
-			fmt.Printf("Updated tunlease at %s (previous %s binary: %s.prev)\n", path, current, path)
+			fmt.Printf("Updated tunle at %s (previous %s binary: %s.prev)\n", path, current, path)
 			return nil
 		},
 	}
