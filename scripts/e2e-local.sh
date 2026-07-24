@@ -30,7 +30,7 @@ tokens:
   - {owner: e2e, token: "$TOKEN"}
 EOF
 
-./bin/tunlease-gateway --config "$TMP/config.yaml" > "$TMP/gateway.log" 2>&1 &
+./bin/tunlease gateway --config "$TMP/config.yaml" > "$TMP/gateway.log" 2>&1 &
 PIDS+=($!)
 
 # 本機目標 server：回固定字串

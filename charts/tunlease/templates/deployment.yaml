@@ -24,7 +24,7 @@ spec:
         - name: gateway
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          args: ["--config", "/etc/tunlease/config.yaml"]
+          args: ["gateway", "--config", "/etc/tunlease/config.yaml"]
           env:
             - name: POD_IP
               valueFrom:

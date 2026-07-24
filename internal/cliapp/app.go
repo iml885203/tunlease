@@ -32,8 +32,13 @@ func NewCommand() *cobra.Command {
 func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 	var gateway, token string
 	root := &cobra.Command{Use: "tunlease", Short: "Claim a 3rd-party callback path and tunnel it to your machine", SilenceUsage: true, Version: fmt.Sprintf("%s (%s)", version, buildTime)}
-	root.PersistentFlags().StringVar(&gateway, "gateway", "", "gateway base URL (env TUNLEASE_GATEWAY)")
-	root.PersistentFlags().StringVar(&token, "token", "", "API token (env TUNLEASE_TOKEN)")
+	// Client flags live on the client subcommands (claim/list/release), not on
+	// root, so the gateway and sidecar subcommands don't inherit an irrelevant
+	// --gateway/--token.
+	addClientFlags := func(c *cobra.Command) {
+		c.Flags().StringVar(&gateway, "gateway", "", "gateway base URL (env TUNLEASE_GATEWAY)")
+		c.Flags().StringVar(&token, "token", "", "API token (env TUNLEASE_TOKEN)")
+	}
 	get := func() (*tunnelclient.Client, error) {
 		c := loadConfig()
 		if gateway != "" {
@@ -75,6 +80,7 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 	}
 	claimCmd.Flags().IntVar(&to, "to", 0, "local port to receive the traffic")
 	_ = claimCmd.MarkFlagRequired("to")
+	addClientFlags(claimCmd)
 	root.AddCommand(claimCmd)
 
 	var all bool
@@ -91,6 +97,7 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 		},
 	}
 	listCmd.Flags().BoolVar(&all, "all", false, "show all owners' claims")
+	addClientFlags(listCmd)
 	root.AddCommand(listCmd)
 
 	var relTo int
@@ -113,8 +120,12 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 		},
 	}
 	releaseCmd.Flags().IntVar(&relTo, "to", 0, "release all claims tunnelled to this local port")
+	addClientFlags(releaseCmd)
 	root.AddCommand(releaseCmd)
 	root.AddCommand(newUpdateCommand(version))
+	root.AddCommand(newGatewayCommand())
+	root.AddCommand(newSidecarCommand())
+	root.AddCommand(newServeCommand())
 	return root
 }
 

@@ -12,7 +12,7 @@ services:
     build:
       context: .
       target: gateway
-    command: ["--config", "/etc/tunlease/config.yaml"]
+    command: ["gateway", "--config", "/etc/tunlease/config.yaml"]
     volumes:
       - ./testdata/compose/gateway.yaml:/etc/tunlease/config.yaml:ro
     ports:

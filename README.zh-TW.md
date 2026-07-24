@@ -2,8 +2,7 @@
 
 把第三方固定 endpoint 的特定 path，暫時轉送到開發者本機；第三方不需要更換 URL。
 
-<!-- Demo GIF 待重錄。用 `vhs assets/demo.tape` 產生後再補回：![...](assets/demo.gif) -->
-_Demo：claim 前 staging callback URL 回 404，`tunlease claim` 後同一 URL 打到本機服務，release 後又回 404。_
+![claim 前固定 callback URL 回 app 的 404，`tunlease claim` 後同一 URL 打到本機服務](assets/demo.gif)
 
 [開發者快速上手](#開發者快速上手) · [平台部署](docs/platform-deployment.zh-TW.md) · [架構](docs/architecture.zh-TW.md) · [疑難排解](docs/developer-guide.zh-TW.md#疑難排解)
 
@@ -34,6 +33,26 @@ flowchart LR
 第三方始終呼叫同一個 URL。開發者認領 path 後，只有該 path 會沿編號路徑進入 localhost；其他流量仍由原始應用程式處理。藍色節點是 Tunlease 擁有並發布的元件；其他節點都是環境中原本就存在的系統。
 
 安全模型包含 path allowlist、互斥且有 TTL 的租約、可選的 token 認證、audit log，以及 fail-open routing。開發工具失效時，流量會回到原始應用程式，不影響既有 endpoint 的可用性。
+
+## 與其他工具的比較
+
+精神上類似 [ngrok](https://ngrok.com/)、
+[localtunnel](https://github.com/localtunnel/localtunnel)、
+[bore](https://github.com/ekzhang/bore)——但解決的問題不同。那些工具是給你的本機 port
+一個**新的** URL；Tunlease 保留第三方**既有的固定** URL，只把其中一條 path 轉到你的機器。
+
+| | Tunlease | ngrok | localtunnel | bore |
+|---|:---:|:---:|:---:|:---:|
+| 對外暴露本機 port | ✅ | ✅ | ✅ | ✅ |
+| 保留第三方既有的固定 URL | ✅ | ❌ | ❌ | ❌ |
+| 只 claim 一條 path，其餘不動 | ✅ | ❌ | ❌ | ❌ |
+| Fail-open 回真正的 app | ✅ | ❌ | ❌ | ❌ |
+| 互斥租約、多開發者共用一個 URL | ✅ | ❌ | ❌ | ❌ |
+| 可自架 | ✅ | ❌ | ✅ | ✅ |
+| 零 server 設定即可用 | ❌ | ✅ | ✅ | ✅ |
+
+Tunlease 需要先在固定 endpoint 前面放一個 gateway（這是保留既有 URL 的代價）；
+ngrok/localtunnel/bore 只需要它們自己的 relay，不用額外部署。
 
 ## 開發者快速上手
 
@@ -90,13 +109,24 @@ Windows amd64 使用 Tunlease 專用的 tunnel transport，已通過公司裝置
 
 ## 元件與部署模型
 
-| 元件 | 位置 | 職責 |
-|---|---|---|
-| `tunlease` | 開發者電腦 | Claim、release、反向 tunnel 與 heartbeat |
-| `tunlease-gateway` | 共用環境 | API、租約 registry 與反向 tunnel server |
-| `tunlease-sidecar` | 固定 endpoint workload | 依 path 分流；任何失敗都回到原始 app |
+全部都是同一個 `tunlease` binary，用 subcommand 切換角色：
 
-這三個 binary 都不會呼叫 Kubernetes API，因此 Kubernetes 不是架構上的必要條件。不過 Kubernetes 是目前建議的部署方式：用 Helm 部署 gateway，再以 sidecar patch 把 proxy 加進目標 workload。
+| 命令 | 執行於 | 職責 |
+|---|---|---|
+| `tunlease claim`（及 `list` / `release`） | 開發者電腦 | Claim 一條 path、持有租約、反向 tunnel、heartbeat |
+| `tunlease gateway` | 共用環境 | API、租約 registry 與反向 tunnel server |
+| `tunlease sidecar` | 固定 endpoint workload | 依 path 分流；任何失敗都回到原始 app |
+| `tunlease serve` | 單機、前置單一 app | Gateway **與** router 同一個 process |
+
+Server 端有兩種跑法：
+
+- **單機、單一 app** — 跑 `tunlease serve --app http://localhost:3000`。一個 process
+  前置該 app：被 claim 的 path tunnel 給開發者，其餘一律 fail-open 回 app。不需要
+  gateway/sidecar 拆分，也不需要 Kubernetes。
+- **共用平台、多個 app** — 跑一次 `tunlease gateway`，再在每個固定 endpoint 的
+  workload 旁加 `tunlease sidecar`。這是 Helm chart 與 sidecar patch 部署的模型。
+
+這些都不會呼叫 Kubernetes API，因此 Kubernetes 不是必要條件——它只是多-app 模型的建議部署目標。
 
 ## 嵌入 tunnel client
 

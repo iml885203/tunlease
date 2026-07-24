@@ -8,9 +8,7 @@ export CGO_ENABLED=0
 .PHONY: build test test-race e2e fmt fmt-check vet lint preflight clean
 
 build:
-	go build -ldflags "$(LDFLAGS) -X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME)" -o $(BIN)/tunlease ./cmd/cli
-	go build -ldflags "$(LDFLAGS)" -o $(BIN)/tunlease-gateway ./cmd/gateway
-	go build -ldflags "$(LDFLAGS)" -o $(BIN)/tunlease-sidecar ./cmd/sidecar
+	go build -ldflags "$(LDFLAGS) -X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME)" -o $(BIN)/tunlease ./cmd/tunlease
 
 test:
 	go test ./... -v

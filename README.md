@@ -2,9 +2,7 @@
 
 Route a path on a third party's fixed endpoint to a local development environment without asking the third party to change its URL.
 
-<!-- Demo GIF pending re-recording. Regenerate with `vhs assets/demo.tape`,
-     then re-add: ![...](assets/demo.gif) -->
-_Demo: a staging callback URL returns 404 until you `tunlease claim` its path, then reaches a server on your laptop — and 404s again once released._
+![A fixed callback URL returns the app's 404 until you claim its path, then reaches a server on your laptop — on the same URL](assets/demo.gif)
 
 [Developer quick start](#quick-start-for-developers) · [Platform setup](docs/platform-deployment.md) · [Architecture](docs/architecture.md) · [Troubleshooting](docs/developer-guide.md#troubleshooting)
 
@@ -35,6 +33,28 @@ flowchart LR
 The third party keeps calling the same URL. When a developer claims a path, only that path follows the numbered route to localhost; everything else continues to the original application. Blue nodes are components owned and shipped by Tunlease. Neutral nodes already exist in the environment.
 
 The safety model combines a path allowlist, exclusive leases with TTLs, optional token authentication, audit logs, and fail-open routing. If the development tooling fails, traffic returns to the original application.
+
+## How it compares
+
+Similar in spirit to [ngrok](https://ngrok.com/),
+[localtunnel](https://github.com/localtunnel/localtunnel), and
+[bore](https://github.com/ekzhang/bore) — but built for a different job. Those
+tools give you a **new** URL for a local port. Tunlease keeps a third party's
+**existing fixed** URL and reroutes just one path on it to your machine.
+
+| | Tunlease | ngrok | localtunnel | bore |
+|---|:---:|:---:|:---:|:---:|
+| Expose a local port | ✅ | ✅ | ✅ | ✅ |
+| Keep a third party's existing fixed URL | ✅ | ❌ | ❌ | ❌ |
+| Claim one path, leave the rest untouched | ✅ | ❌ | ❌ | ❌ |
+| Fail open to the real app | ✅ | ❌ | ❌ | ❌ |
+| Exclusive lease, many developers, one URL | ✅ | ❌ | ❌ | ❌ |
+| Self-hostable | ✅ | ❌ | ✅ | ✅ |
+| Works with zero server setup | ❌ | ✅ | ✅ | ✅ |
+
+Tunlease needs a gateway in front of the fixed endpoint first (that is the
+trade-off for keeping the existing URL); ngrok/localtunnel/bore need nothing but
+their own relay.
 
 ## Quick start for developers
 
@@ -93,13 +113,26 @@ Windows amd64 uses Tunlease's purpose-built tunnel transport. The PowerShell ins
 
 ## Components and deployment model
 
-| Component | Location | Responsibility |
-|---|---|---|
-| `tunlease` | Developer machine | Claims, releases, reverse tunnel, and heartbeat |
-| `tunlease-gateway` | Shared environment | API, lease registry, and reverse-tunnel server |
-| `tunlease-sidecar` | Fixed-endpoint workload | Path routing; falls back to the original app on any failure |
+It is all one `tunlease` binary; a subcommand selects the role:
 
-None of the binaries call the Kubernetes API, so Kubernetes is not an architectural requirement. It is the recommended deployment target: deploy the gateway with Helm and add the proxy using the sidecar patch.
+| Command | Runs on | Responsibility |
+|---|---|---|
+| `tunlease claim` (also `list` / `release`) | Developer machine | Claim a path, hold the lease, reverse tunnel, heartbeat |
+| `tunlease gateway` | Shared environment | API, lease registry, and reverse-tunnel server |
+| `tunlease sidecar` | Fixed-endpoint workload | Path routing; falls back to the original app on any failure |
+| `tunlease serve` | Single host in front of one app | Gateway **and** router in one process |
+
+There are two ways to run the server side:
+
+- **Single host, one app** — run `tunlease serve --app http://localhost:3000`. One
+  process fronts the app: claimed paths tunnel to a developer, everything else
+  fails open to the app. No gateway/sidecar split, no Kubernetes.
+- **Shared platform, many apps** — run `tunlease gateway` once, and add
+  `tunlease sidecar` beside each fixed-endpoint workload. This is the model the
+  Helm chart and sidecar patch deploy.
+
+None of these call the Kubernetes API, so Kubernetes is not required — it is
+just the recommended target for the multi-app model.
 
 ## Embedding the tunnel client
 

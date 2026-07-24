@@ -107,6 +107,17 @@ func (p *Proxy) RunPoller(ctx context.Context) {
 	}
 }
 
+// SetRoutes replaces the route table directly, bypassing the HTTP poller. It is
+// used by the combined serve mode, where the router shares a process with the
+// gateway and reads routes straight from the lease registry.
+func (p *Proxy) SetRoutes(routes []Route) {
+	p.updateMu.Lock()
+	defer p.updateMu.Unlock()
+	sort.Slice(routes, func(i, j int) bool { return len(routes[i].PathPrefix) > len(routes[j].PathPrefix) })
+	p.table.Store(&routeTable{routes: routes, updatedAt: time.Now()})
+	p.routesAge.Set(0)
+}
+
 func (p *Proxy) fetch(ctx context.Context) {
 	p.updateMu.Lock()
 	defer p.updateMu.Unlock()

@@ -33,7 +33,7 @@ wait_for http://127.0.0.1:28080/health
 before=$(curl -fsS http://127.0.0.1:28080/test/callback)
 expect "app:/test/callback" "$before" "unclaimed path goes to app"
 
-go build -o "$TMP/tunlease" ./cmd/cli
+go build -o "$TMP/tunlease" ./cmd/tunlease
 go build -o "$TMP/testapp" ./cmd/testapp
 "$TMP/testapp" --listen 127.0.0.1:18500 --label local >"$TMP/local.log" 2>&1 & LOCAL_PID=$!
 TUNLEASE_GATEWAY=http://127.0.0.1:18300 TUNLEASE_TOKEN=e2e-token TUNLEASE_STATE_FILE="$TMP/state.json" \

@@ -98,7 +98,7 @@ jobs:
             [ "$OS" = "windows" ] && NAME="${NAME}.exe"
             GOOS=$OS GOARCH=$ARCH CGO_ENABLED=0 go build \
               -ldflags "-s -w -X 'main.version=${VERSION}' -X 'main.buildTime=${BUILD_TIME}'" \
-              -o "$NAME" ./cmd/cli
+              -o "$NAME" ./cmd/tunlease
             sha256sum "$NAME" > "${NAME}.sha256"
           done
       - name: Publish release
