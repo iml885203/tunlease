@@ -68,8 +68,15 @@ Configuration precedence is flag, environment variable, then file:
 |---|---|---|---|
 | Gateway URL | `--gateway` | `TUNLEASE_GATEWAY` | `gateway` |
 | Optional personal token | `--token` | `TUNLEASE_TOKEN` | `token` |
+| Skip gateway TLS verification | `--insecure` | `TUNLEASE_INSECURE` | `insecure` |
+| Default scheme when none given | — | `TUNLEASE_DEFAULT_SCHEME` | `default_scheme` |
 
 When authentication is enabled, never commit a token or place it in shared documentation.
+
+The gateway URL scheme is optional and defaults to `https`; write `http://`
+explicitly for a gateway without TLS. `--insecure` skips verification of the
+gateway's TLS certificate (for a self-signed or internal gateway) — it does not
+weaken the tunnel's own inner TLS, which stays fingerprint-pinned.
 
 ## Open a tunnel
 

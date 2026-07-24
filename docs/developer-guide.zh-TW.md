@@ -66,8 +66,14 @@ token: YOUR_PERSONAL_TOKEN
 |---|---|---|---|
 | Gateway URL | `--gateway` | `TUNLEASE_GATEWAY` | `gateway` |
 | 可選的個人 token | `--token` | `TUNLEASE_TOKEN` | `token` |
+| 跳過 gateway TLS 驗證 | `--insecure` | `TUNLEASE_INSECURE` | `insecure` |
+| 未帶 scheme 時的預設 | — | `TUNLEASE_DEFAULT_SCHEME` | `default_scheme` |
 
 啟用認證時，不要把 token commit 到 repo，也不要放進共用文件。
+
+Gateway URL 的 scheme 可省略，預設為 `https`；沒有 TLS 的 gateway 請明確寫
+`http://`。`--insecure` 會跳過 gateway TLS 憑證的驗證（用於自簽或內網 gateway）
+——它不會削弱 tunnel 本身的 inner TLS，那仍以 fingerprint pin 住。
 
 ## 開啟 tunnel
 
