@@ -24,6 +24,12 @@ config:
   registry: memory
   redisURL: ""
   redisPrefix: tunlease
+  # Same-domain deployment: the control plane is served under controlPrefix and
+  # every other path is third-party traffic — tunnelled if a claim matches, else
+  # proxied to failOpenURL (the original app), else 404. Set failOpenURL to your
+  # app's Service, e.g. http://myapp.default.svc.cluster.local.
+  controlPrefix: /_tunlease
+  failOpenURL: ""
   maxClaims: 64
   ttlSeconds: 300
   heartbeatSeconds: 30
@@ -37,7 +43,6 @@ config:
 # Client authentication is disabled when tokens is empty. Configure tokens for
 # any gateway reachable outside a trusted development network.
 auth:
-  sidecarToken: change-me
   tokens: []
 
 resources:

@@ -2,7 +2,7 @@
 
 [English](developer-guide.md) · [繁體中文](developer-guide.zh-TW.md)
 
-Use tunlease to temporarily route a fixed staging callback path to your machine. This guide assumes the platform team has already deployed `tunlease-gateway`, added `tunlease-sidecar` to the target endpoint, and configured an allowed path. You do not need Kubernetes access.
+Use tunlease to temporarily route a fixed staging callback path to your machine. This guide assumes the platform team has already deployed `tunlease-gateway` in front of the target endpoint and configured an allowed path. You do not need Kubernetes access.
 
 Before starting, ask a tunlease maintainer for:
 
@@ -120,7 +120,7 @@ Local claim metadata is stored in `~/.tunlease/state.json`; it does not contain 
 : The path overlaps another active lease. Run `tunle list --all` to see its owner and expiry; do not take over another developer's test.
 
 Callbacks still reach the staging app
-: Confirm that the `claim` process is running, the local port is correct, the local service responds, and `tunle list` shows the lease. The sidecar intentionally fails open to the original app when the tunnel cannot be reached.
+: Confirm that the `claim` process is running, the local port is correct, the local service responds, and `tunle list` shows the lease. The gateway intentionally fails open to the original app when the tunnel cannot be reached.
 
 Cannot connect to the gateway over TLS
 : The scheme defaults to `https` and the client does not silently retry over `http`. If the gateway has no TLS (e.g. localhost), use an explicit `http://` gateway URL.

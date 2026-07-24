@@ -3,11 +3,11 @@ package gatewayd
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
-	"github.com/iml885203/tunlease/internal/registry"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/iml885203/tunlease/internal/registry"
 )
 
 type Token struct {
@@ -17,7 +17,6 @@ type Token struct {
 type Server struct {
 	Store             registry.Store
 	Tokens            map[string]Token
-	SidecarToken      string
 	TTL, Heartbeat    time.Duration
 	TunnelHost        string
 	Tunnel            *Tunnel
@@ -81,7 +80,6 @@ func (s *Server) Handler() http.Handler {
 	control.HandleFunc("POST /api/v1/claims/{id}/heartbeat", s.heartbeat)
 	control.HandleFunc("DELETE /api/v1/claims/{id}", s.release)
 	control.HandleFunc("GET /api/v1/claims", s.list)
-	control.HandleFunc("GET /api/v1/routes", s.routes)
 	if s.Tunnel != nil {
 		control.Handle("/tunnel", s.Tunnel)
 	}
@@ -195,28 +193,4 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		out = append(out, item{c.ID, c.Owner, c.Paths, c.ExpiresAt})
 	}
 	write(w, 200, map[string]any{"claims": out})
-}
-func (s *Server) routes(w http.ResponseWriter, r *http.Request) {
-	if s.SidecarToken != "" && r.Header.Get("Authorization") != "Bearer "+s.SidecarToken {
-		errj(w, 401, "unauthorized", "valid sidecar token required", nil)
-		return
-	}
-	v := s.Store.Version()
-	if unhealthy, ok := s.Store.(interface{ LastError() error }); ok && unhealthy.LastError() != nil {
-		errj(w, 503, "registry_unavailable", "registry is temporarily unavailable", nil)
-		return
-	}
-	etag := fmt.Sprintf("\"%d\"", v)
-	if r.Header.Get("If-None-Match") == etag {
-		w.WriteHeader(304)
-		return
-	}
-	w.Header().Set("ETag", etag)
-	routes := []map[string]any{}
-	for _, c := range s.Store.List() {
-		for _, path := range c.Paths {
-			routes = append(routes, map[string]any{"path_prefix": path, "claim_id": c.ID, "owner": c.Owner, "expires_at": c.ExpiresAt})
-		}
-	}
-	write(w, 200, map[string]any{"version": v, "routes": routes})
 }

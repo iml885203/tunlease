@@ -15,19 +15,16 @@ It connects the role-specific guides without replacing them.
 Tunlease is a focused callback-development tunnel, not a general VPN or proxy.
 Its safety model combines a path allowlist, exclusive leases with TTL,
 optional token authentication, structured audit logs, and fail-open routing to
-the original application. See [Architecture](architecture.md) for the system
-and failure paths and the [v1 specification](spec-v1.md) for protocol and
-security details.
+the original application. See [Architecture](architecture.md) for the system,
+failure paths, and protocol details.
 
 ## 2. Get the images
 
-- [ ] Build and push `tunlease-gateway` and `tunlease-sidecar` to a registry your
-  cluster can pull from.
+- [ ] Build and push `tunlease-gateway` to a registry your cluster can pull from.
 
-The manual GitLab CI job `build-images-self-hosted` builds both Dockerfile
-targets with `docker buildx` for `linux/amd64` and `linux/arm64`, then pushes
-`$TARGET_REGISTRY/tunlease-gateway:$TAG` and
-`$TARGET_REGISTRY/tunlease-sidecar:$TAG`. `TARGET_REGISTRY` defaults to
+The manual GitLab CI job `build-images-self-hosted` builds the gateway Dockerfile
+target with `docker buildx` for `linux/amd64` and `linux/arm64`, then pushes
+`$TARGET_REGISTRY/tunlease-gateway:$TAG`. `TARGET_REGISTRY` defaults to
 `$CI_REGISTRY_IMAGE`; its host and credentials are supplied separately through
 `REGISTRY_HOST`, `REGISTRY_USER`, and `REGISTRY_PASSWORD`.
 
@@ -47,13 +44,9 @@ export TUNLEASE_TAG="<COMMIT_SHA_OR_RELEASE_TAG>"
 skopeo copy --all \
   "docker://<ACCESSIBLE_SOURCE_REGISTRY>/tunlease-gateway:$TUNLEASE_TAG" \
   "docker://<YOUR_REGISTRY>/tunlease-gateway:$TUNLEASE_TAG"
-skopeo copy --all \
-  "docker://<ACCESSIBLE_SOURCE_REGISTRY>/tunlease-sidecar:$TUNLEASE_TAG" \
-  "docker://<YOUR_REGISTRY>/tunlease-sidecar:$TUNLEASE_TAG"
 ```
 
-Keep the gateway and sidecar on the same tag. Deployment prerequisites and
-image overrides are covered in the
+Deployment prerequisites and image overrides are covered in the
 [Platform deployment guide](platform-deployment.md).
 
 ## 3. Deploy the gateway
@@ -66,15 +59,14 @@ WebSocket connection. Configure the Ingress or load balancer to preserve
 WebSocket upgrades and use read/send timeouts of at least 3600 seconds. No UDP
 listener or forwarding is needed.
 
-## 4. Add the sidecar
+## 4. Front the app with the gateway
 
 - [ ] Follow
-  [Platform deployment → Add the sidecar](platform-deployment.md#add-the-sidecar)
-  beside the workload that owns the fixed endpoint.
+  [Platform deployment → Front the app with the gateway](platform-deployment.md#front-the-app-with-the-gateway)
+  so the fixed endpoint's Ingress routes to the gateway.
 
-The sidecar routes claimed paths through the gateway and fails open to the
-application for everything else. The `sidecar_token` value in gateway and
-sidecar configuration must match.
+The gateway routes claimed paths through the tunnel and fails open to the
+application for everything else. Set `fail_open_url` to the app's Service.
 
 ## 5. Developers claim paths
 

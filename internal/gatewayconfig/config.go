@@ -23,7 +23,6 @@ type Config struct {
 	Registry         string   `yaml:"registry"`
 	RedisURL         string   `yaml:"redis_url"`
 	RedisPrefix      string   `yaml:"redis_prefix"`
-	SidecarToken     string   `yaml:"sidecar_token"`
 	// ControlPrefix is the URL path prefix under which the control plane (claim
 	// API, tunnel WebSocket, healthz) is served. It keeps the control plane out
 	// of the way of third-party paths on the SAME domain — e.g. with the default

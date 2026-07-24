@@ -91,9 +91,6 @@ func runGateway(configPath string) error {
 	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
-	if c.SidecarToken == "" {
-		logger.Warn("/api/v1/routes is unprotected; only suitable for a trusted in-cluster network")
-	}
 	if len(c.Tokens) == 0 {
 		logger.Warn("client authentication is disabled; only suitable for a trusted network")
 	}
@@ -111,7 +108,7 @@ func runGateway(configPath string) error {
 	if err != nil {
 		return err
 	}
-	srv := &gatewayd.Server{Store: store, Tokens: tokens, SidecarToken: c.SidecarToken, TTL: ttl, Heartbeat: time.Duration(c.HeartbeatSeconds) * time.Second, TunnelHost: host, Tunnel: tunnel, TunnelFingerprint: tunnel.Fingerprint(), OnChange: tunnel.Sync, ControlPrefix: c.ControlPrefix, FailOpen: failOpen}
+	srv := &gatewayd.Server{Store: store, Tokens: tokens, TTL: ttl, Heartbeat: time.Duration(c.HeartbeatSeconds) * time.Second, TunnelHost: host, Tunnel: tunnel, TunnelFingerprint: tunnel.Fingerprint(), OnChange: tunnel.Sync, ControlPrefix: c.ControlPrefix, FailOpen: failOpen}
 	// Lease expiry is lazy; periodic sync closes sessions whose claims expired.
 	go func() {
 		for range time.Tick(10 * time.Second) {

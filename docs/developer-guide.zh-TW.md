@@ -2,7 +2,7 @@
 
 [English](developer-guide.md) · [繁體中文](developer-guide.zh-TW.md)
 
-Tunlease 可以暫時把 staging 固定 callback path 轉到你的電腦。本指南假設平台團隊已部署 `tunlease-gateway`、在目標 endpoint 加入 `tunlease-sidecar`，並設定可認領的 path。你不需要 Kubernetes 權限。
+Tunlease 可以暫時把 staging 固定 callback path 轉到你的電腦。本指南假設平台團隊已把 `tunlease-gateway` 部署在目標 endpoint 前面，並設定可認領的 path。你不需要 Kubernetes 權限。
 
 開始前，向 Tunlease 維護者取得：
 
@@ -118,7 +118,7 @@ tunle release --to 8080
 : Path 與現有租約重疊。執行 `tunle list --all` 查看 owner 與到期時間，不要接管其他開發者的測試。
 
 Callback 仍然進到 staging app
-: 確認 `claim` process 還在、local port 正確、本機服務有回應，而且 `tunle list` 看得到租約。Tunnel 無法連線時 sidecar 會刻意 fail-open 回原始 app。
+: 確認 `claim` process 還在、local port 正確、本機服務有回應，而且 `tunle list` 看得到租約。Tunnel 無法連線時 gateway 會刻意 fail-open 回原始 app。
 
 無法透過 TLS 連上 gateway
 : scheme 預設為 `https`，client 不會自動退回 `http`。若 gateway 沒有 TLS（例如 localhost），請改用明確的 `http://` gateway URL。

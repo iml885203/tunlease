@@ -29,8 +29,8 @@ lint:
     - golangci-lint run ./...
 
 # Build is decoupled from push. This repo's Dockerfile is the single build
-# definition; the job below just selects WHICH target (gateway/sidecar) to build
-# and WHICH registry to push to. Multi-arch (amd64+arm64) so images run on either
+# definition; the job below just selects the gateway target to build and WHICH
+# registry to push to. Multi-arch (amd64+arm64) so images run on either
 # node type; Go cross-compiles natively via the Dockerfile's TARGETOS/TARGETARCH.
 # Multi-arch manifests can't be --load'd, so we build --push directly.
 #
@@ -53,8 +53,6 @@ build-images:
     matrix:
       - IMAGE_TARGET: gateway
         IMAGE_NAME: tunlease-gateway
-      - IMAGE_TARGET: sidecar
-        IMAGE_NAME: tunlease-sidecar
   before_script:
     - echo "$REGISTRY_PASSWORD" | docker login -u "$REGISTRY_USER" --password-stdin "$REGISTRY_HOST"
   script:

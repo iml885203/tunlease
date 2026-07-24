@@ -8,17 +8,11 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-s -w" -o /out/tunle ./cmd/tunlease && \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-s -w" -o /out/tunlease-testapp ./cmd/testapp
 
-# One binary, selected by subcommand. The gateway and sidecar targets share the
-# same image and differ only by their default command.
+# The gateway image runs the single tunle binary with the `gateway` subcommand.
 FROM gcr.io/distroless/static-debian12:nonroot AS gateway
 COPY --from=build /out/tunle /tunle
 ENTRYPOINT ["/tunle"]
 CMD ["gateway"]
-
-FROM gcr.io/distroless/static-debian12:nonroot AS sidecar
-COPY --from=build /out/tunle /tunle
-ENTRYPOINT ["/tunle"]
-CMD ["sidecar"]
 
 FROM gcr.io/distroless/static-debian12:nonroot AS testapp
 COPY --from=build /out/tunlease-testapp /tunlease-testapp

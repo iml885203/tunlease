@@ -41,8 +41,8 @@ jobs:
 
   # Multi-arch (amd64+arm64) so images run on either node type. Go cross-compiles
   # natively via the Dockerfile's TARGETOS/TARGETARCH. Multi-arch manifests can't
-  # be loaded locally, so we build --push directly. Both gateway and sidecar are
-  # built from this repo's single Dockerfile, differing only by --target.
+  # be loaded locally, so we build --push directly. The gateway image is built
+  # from this repo's single Dockerfile via --target.
   images:
     runs-on: ubuntu-latest
     needs: [test, lint]
@@ -55,8 +55,6 @@ jobs:
         include:
           - target: gateway
             name: tunlease-gateway
-          - target: sidecar
-            name: tunlease-sidecar
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3

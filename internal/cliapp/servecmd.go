@@ -24,8 +24,8 @@ func newServeCommand() *cobra.Command {
 		Long: "serve runs the gateway on a single public HTTP listener. Third-party\n" +
 			"requests whose path matches an active claim are tunnelled to the\n" +
 			"developer; everything else falls open to --app (or 404s if --app is\n" +
-			"unset). It suits a single host in front of one application; for many\n" +
-			"applications, deploy the gateway and sidecar separately.",
+			"unset). It is a convenience wrapper for the common single-host case,\n" +
+			"equivalent to `gateway` with fail_open_url set to --app.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runServe(cmd.Context(), configPath, listen, app)
@@ -36,6 +36,13 @@ func newServeCommand() *cobra.Command {
 	f.StringVar(&listen, "listen", env("TUNLEASE_SERVE_LISTEN", ":8080"), "address that receives third-party traffic and gateway API")
 	f.StringVar(&app, "app", os.Getenv("TUNLEASE_APP_URL"), "fail-open target for unclaimed paths (optional; 404 when unset)")
 	return cmd
+}
+
+func env(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }
 
 func runServe(parent context.Context, configPath, listen, app string) error {
@@ -65,7 +72,7 @@ func runServe(parent context.Context, configPath, listen, app string) error {
 	}
 
 	gw := &gatewayd.Server{
-		Store: store, Tokens: tokens, SidecarToken: c.SidecarToken, TTL: ttl,
+		Store: store, Tokens: tokens, TTL: ttl,
 		Heartbeat: time.Duration(c.HeartbeatSeconds) * time.Second, TunnelHost: "127.0.0.1",
 		Tunnel: tunnel, TunnelFingerprint: tunnel.Fingerprint(),
 		OnChange: tunnel.Sync, FailOpen: failOpen, ControlPrefix: c.ControlPrefix,

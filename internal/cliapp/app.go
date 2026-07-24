@@ -33,7 +33,7 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 	var gateway, token string
 	root := &cobra.Command{Use: "tunle", Short: "Claim a 3rd-party callback path and tunnel it to your machine", SilenceUsage: true, Version: fmt.Sprintf("%s (%s)", version, buildTime)}
 	// Client flags live on the client subcommands (claim/list/release), not on
-	// root, so the gateway and sidecar subcommands don't inherit an irrelevant
+	// root, so the gateway and serve subcommands don't inherit an irrelevant
 	// --gateway/--token.
 	addClientFlags := func(c *cobra.Command) {
 		c.Flags().StringVar(&gateway, "gateway", "", "gateway base URL (env TUNLEASE_GATEWAY)")
@@ -124,7 +124,6 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 	root.AddCommand(releaseCmd)
 	root.AddCommand(newUpdateCommand(version))
 	root.AddCommand(newGatewayCommand())
-	root.AddCommand(newSidecarCommand())
 	root.AddCommand(newServeCommand())
 	return root
 }

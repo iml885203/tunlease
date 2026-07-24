@@ -11,16 +11,14 @@ flowchart LR
     subgraph Cluster[Shared environment]
         Ingress[Existing Ingress<br/>fixed public endpoint]
 
-        subgraph Workload[Provider endpoint Pod]
-            Sidecar[tunlease-sidecar<br/>path router]
-            App[Original application<br/>fixed-endpoint workload]
-        end
-
         subgraph GatewayPod[tunlease-gateway Pod]
-            API[Claim and route API]
+            Router[HTTP path demux<br/>control_prefix + fail_open_url]
+            API[Claim API]
             Registry[Lease registry<br/>memory in staging]
             TunnelServer[Purpose-built tunnel server]
         end
+
+        App[Original application<br/>fixed-endpoint workload]
     end
 
     subgraph Developer[Developer machine]
@@ -29,42 +27,46 @@ flowchart LR
     end
 
     ThirdParty -->|fixed URL| Ingress
-    Ingress --> Sidecar
-    Sidecar -->|unclaimed path or failure| App
-    Sidecar -->|claimed path| TunnelServer
+    Ingress --> Router
+    Router -->|unclaimed path or failure| App
+    Router -->|claimed path| TunnelServer
+    Router -->|control_prefix path| API
     CLI -->|claim and heartbeat| API
     API <--> Registry
-    Sidecar -.->|poll route table every 3s| API
     CLI ==>|reverse WebSocket tunnel| TunnelServer
     TunnelServer -->|forward request| LocalApp
 
     classDef tunlease fill:#dbeafe,stroke:#2563eb,color:#1e3a8a,stroke-width:2px;
-    class CLI,Sidecar,API,Registry,TunnelServer tunlease;
+    class CLI,Router,API,Registry,TunnelServer tunlease;
 ```
 
-Blue nodes are owned and shipped by tunlease; neutral nodes are third-party systems or existing infrastructure and applications. The control plane consists of claims, heartbeats, leases, and route-table polling. The data plane is the request path through the sidecar to either the original app or the reverse tunnel. The sidecar never depends on Kubernetes APIs.
+Blue nodes are owned and shipped by tunlease; neutral nodes are third-party systems or existing infrastructure and applications. The gateway sits in front of the app and demuxes traffic by path itself: requests under `control_prefix` (default `/_tunlease`) hit the claim API; every other path is third-party traffic. The control plane consists of claims, heartbeats, and leases. The data plane is the request path through the gateway to either the reverse tunnel or, on an unmatched path or tunnel failure, the original app (`fail_open_url`). The gateway never depends on Kubernetes APIs.
 
 ## Request routing
 
 ```mermaid
 flowchart TD
-    Request[Request reaches tunlease-sidecar]
-    Match{Active route matches<br/>the request path?}
+    Request[Request reaches the gateway]
+    Control{Path under<br/>control_prefix?}
+    API[Handle on the claim API]
+    Match{Active claim matches<br/>the request path?}
     Tunnel{Tunnel responds<br/>within timeout?}
     Local[Forward to local service]
-    App[Forward to original app]
+    App[Forward to original app<br/>fail_open_url]
 
-    Request --> Match
+    Request --> Control
+    Control -->|Yes| API
+    Control -->|No| Match
     Match -->|No| App
     Match -->|Yes| Tunnel
     Tunnel -->|Yes| Local
     Tunnel -->|No: fail open| App
 
     classDef tunlease fill:#dbeafe,stroke:#2563eb,color:#1e3a8a,stroke-width:2px;
-    class Request,Match,Tunnel tunlease;
+    class Request,Control,Match,Tunnel tunlease;
 ```
 
-The sidecar uses longest-prefix matching. If the route table is unavailable for more than its maximum stale period, it clears the table, making every request take the original-app path.
+The gateway uses longest-prefix matching against active claims. A path with no matching claim, or a claim whose tunnel does not respond, takes the original-app path (`fail_open_url`); if `fail_open_url` is unset, it returns 404.
 
 ## Claim lifecycle
 
@@ -73,7 +75,6 @@ sequenceDiagram
     participant Dev as Developer
     participant CLI as tunle CLI
     participant GW as tunlease-gateway
-    participant SC as tunlease-sidecar
     participant Local as Local service
 
     Dev->>CLI: tunle claim --to 8080 /path/*
@@ -82,9 +83,8 @@ sequenceDiagram
     CLI->>GW: Open reverse tunnel
     loop While the claim is active
         CLI->>GW: Heartbeat
-        SC->>GW: Poll /api/v1/routes
     end
-    SC->>Local: Forward matching callback through tunnel
+    GW->>Local: Forward matching callback through tunnel
     Dev->>CLI: Ctrl+C
     CLI->>GW: DELETE claim
 ```
@@ -93,9 +93,9 @@ sequenceDiagram
 
 With the in-memory registry, replacing the gateway Pod removes all leases and tunnels. This is intentional for the current single-replica deployment:
 
-1. The sidecar cannot reach the old tunnel and fails open to the original app.
+1. The gateway can no longer match the old claim and fails open to the original app.
 2. The CLI reconnects, discovers that its lease no longer exists, and creates a new claim.
-3. The CLI builds a new tunnel and the sidecar receives the new route.
+3. The CLI builds a new tunnel and the gateway registers the new claim.
 4. Matching callbacks resume forwarding to the local service.
 
 This behavior has been verified in a staging environment; callback forwarding recovered in approximately 17 seconds without returning gateway-generated 5xx responses.
@@ -104,7 +104,6 @@ This behavior has been verified in a staging environment; callback forwarding re
 
 The core protocol does not require Kubernetes. Kubernetes provides the current packaging and lifecycle model:
 
-- Helm deploys the shared gateway, Service, Ingress, and configuration Secret.
-- The target application's version-controlled Deployment adds `tunlease-sidecar`.
-- The sidecar takes the application's original Service port; the application moves to a Pod-local port.
+- Helm deploys the gateway, Service, Ingress, and configuration Secret.
+- The gateway is deployed in front of the app: Ingress routes the fixed endpoint to the gateway, and the gateway's `fail_open_url` points at the app's Service.
 - Public hosts, paths, and third-party configuration remain unchanged.

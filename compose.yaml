@@ -20,27 +20,12 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      app:
+        condition: service_started
 
+  # The fail-open app the gateway proxies unclaimed paths to. The gateway itself
+  # fronts the app (fail_open_url in the gateway config) and does the path demux.
   app:
     build:
       context: .
       target: testapp
-
-  sidecar:
-    build:
-      context: .
-      target: sidecar
-    environment:
-      TUNLEASE_SIDECAR_LISTEN: ":8080"
-      TUNLEASE_APP_URL: "http://app:8081"
-      TUNLEASE_ROUTES_URL: "http://gateway:8300/api/v1/routes"
-      TUNLEASE_SIDECAR_TOKEN: "sidecar-test-token"
-      TUNLEASE_POLL_INTERVAL: "500ms"
-      TUNLEASE_MAX_STALE: "3s"
-      TUNLEASE_DIAL_TIMEOUT: "500ms"
-    ports:
-      - "28080:8080"
-      - "29090:9090"
-    depends_on:
-      - app
-      - gateway

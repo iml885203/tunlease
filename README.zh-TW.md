@@ -13,19 +13,18 @@ flowchart LR
     ThirdParty[第三方系統] -->|"1. 呼叫同一個固定 URL"| Ingress[既有 Ingress]
 
     subgraph Shared[共用環境]
-        Ingress -->|"2. Request 進入 workload"| Sidecar[tunlease-sidecar<br/>path router]
-        Sidecar -->|"3. 已認領的 path"| Gateway[tunlease-gateway]
-        Sidecar -.->|"Fallback：未認領或服務異常"| App[原始應用程式]
+        Ingress -->|"2. Request 進入 gateway"| Gateway[tunlease-gateway<br/>path router]
+        Gateway -.->|"3. Fallback：未認領或服務異常"| App[原始應用程式]
     end
 
     subgraph Laptop[開發者電腦]
         CLI[tunle CLI] -->|"5. 轉送到 localhost"| Local[本機服務]
     end
 
-    Gateway ==>|"4. 已建立的反向 tunnel"| CLI
+    Gateway ==>|"4. 已認領的 path 走反向 tunnel"| CLI
 
     classDef tunlease fill:#dbeafe,stroke:#2563eb,color:#1e3a8a,stroke-width:2px;
-    class CLI,Sidecar,Gateway tunlease;
+    class CLI,Gateway tunlease;
     style Shared fill:#f8fafc,stroke:#94a3b8,color:#334155
     style Laptop fill:#f8fafc,stroke:#94a3b8,color:#334155
 ```
@@ -116,19 +115,21 @@ Windows amd64 使用 Tunlease 專用的 tunnel transport。PowerShell installer 
 | 命令 | 執行於 | 職責 |
 |---|---|---|
 | `tunle claim`（及 `list` / `release`） | 開發者電腦 | Claim 一條 path、持有租約、反向 tunnel、heartbeat |
-| `tunle gateway` | 共用環境 | API、租約 registry 與反向 tunnel server |
-| `tunle sidecar` | 固定 endpoint workload | 依 path 分流；任何失敗都回到原始 app |
-| `tunle serve` | 單機、前置單一 app | Gateway **與** router 同一個 process |
+| `tunle gateway` | 前置於 app | API、租約 registry、反向 tunnel server、path 分流與 fail-open 回 app |
+| `tunle serve` | 單機、前置單一 app | `gateway` 的便利包裝，把 `fail_open_url` 設為 `--app` |
 
-Server 端有兩種跑法：
+Gateway 位於 app 前面，並包辦 server 端所有事情。它把 control plane 放在
+`control_prefix`（預設 `/_tunlease`）底下；其餘 path 都是第三方流量——符合 claim
+時 tunnel 給開發者，否則 proxy 回 `fail_open_url`（原始 app），再否則 404。
+沒有獨立的 sidecar process。
 
 - **單機、單一 app** — 跑 `tunle serve --app http://localhost:3000`。一個 process
   前置該 app：被 claim 的 path tunnel 給開發者，其餘一律 fail-open 回 app。不需要
-  gateway/sidecar 拆分，也不需要 Kubernetes。
-- **共用平台、多個 app** — 跑一次 `tunle gateway`，再在每個固定 endpoint 的
-  workload 旁加 `tunle sidecar`。這是 Helm chart 與 sidecar patch 部署的模型。
+  Kubernetes。
+- **共用平台** — 跑 `tunle gateway`，把 `fail_open_url` 指向 app 的 Service，並將
+  gateway 部署在 app 前面（Ingress → gateway）。這是 Helm chart 部署的模型。
 
-這些都不會呼叫 Kubernetes API，因此 Kubernetes 不是必要條件——它只是多-app 模型的建議部署目標。
+Gateway 不會呼叫 Kubernetes API，因此 Kubernetes 不是必要條件——它只是平台模型的建議部署目標。
 
 ## 嵌入 tunnel client
 
@@ -145,11 +146,11 @@ go get github.com/iml885203/tunlease/pkg/tunnelclient@latest
 需要 Go 與 Docker Compose；只有驗證部署 manifest 時才需要 Helm 和 kubectl。
 
 ```bash
-make build      # 建置三個 binary 到 bin/
+make build      # 建置 tunle binary 到 bin/
 make test       # 執行 Go tests
 make lint       # 執行固定版本的 golangci-lint container
 make preflight  # build、vet、race test、lint 與格式檢查
-make e2e        # Redis + gateway + sidecar + app + 真實 CLI
+make e2e        # Redis + gateway + app + 真實 CLI
 ```
 
 ## 依角色閱讀
@@ -157,14 +158,13 @@ make e2e        # Redis + gateway + sidecar + app + 真實 CLI
 - **第一次導入 Tunlease 的團隊：**[導入指南](docs/adoption-guide.zh-TW.md)——從適用情境、image、部署、開發者 claim 到完整流程驗證（[English](docs/adoption-guide.md)）
 - **要接第三方 callback 的開發者：**[開發者指南](docs/developer-guide.zh-TW.md)——安裝、設定、CLI 與疑難排解（[English](docs/developer-guide.md)）
 - **要自架 gateway 的平台團隊：**[平台部署指南 → 安裝 Gateway](docs/platform-deployment.zh-TW.md#安裝-gateway)——自架前提（image、Ingress、DNS/TLS）、Helm 安裝與安全（[English](docs/platform-deployment.md#install-the-gateway)）
-- **要加 sidecar 的 service owner：**[平台部署指南 → 加入 Sidecar](docs/platform-deployment.zh-TW.md#加入-sidecar)——patch workload、sidecar env 與共用的 route-table token（[English](docs/platform-deployment.md#add-the-sidecar)）
+- **要前置 app 的 service owner：**[平台部署指南 → 用 Gateway 前置 App](docs/platform-deployment.zh-TW.md#用-gateway-前置-app)——把 gateway 部署在 app 前面，並將 `fail_open_url` 指向 app 的 Service（[English](docs/platform-deployment.md#front-the-app-with-the-gateway)）
 - **要理解或修改系統的貢獻者：**[架構](docs/architecture.zh-TW.md)——control/data plane、routing 與復原流程（[English](docs/architecture.md)）
-- **要實作 client 或 protocol 的開發者：**[v1 protocol 規格](docs/spec-v1.zh-TW.md)——HTTP/tunnel contract 與設計邊界（[English](docs/spec-v1.md)）
 - **要在 Go 應用程式嵌入 tunnel 的開發者：**[嵌入 Go client](docs/go-client.zh-TW.md)——module 設定、lifecycle API、錯誤與測試（[English](docs/go-client.md)）
 
 ## 目前狀態
 
-v0.1 產品 baseline 已完成。Gateway、CLI、可重用 Go client 與 sidecar 皆可運作：public endpoint → localhost tunnel、10 分鐘 idle tunnel timeout、fail-open、in-memory 與可選的 Redis registry、安裝與自動更新，以及跨平台（Linux/macOS/Windows）binary 都已具備。
+v0.1 產品 baseline 已完成。Gateway、CLI 與可重用 Go client 皆可運作：public endpoint → localhost tunnel、10 分鐘 idle tunnel timeout、fail-open、in-memory 與可選的 Redis registry、安裝與自動更新，以及跨平台（Linux/macOS/Windows）binary 都已具備。
 
 單一 gateway replica 搭配 memory registry 是一種有效的部署方式。Gateway 重啟時，claim 會短暫消失，流量先 fail-open 回原始 app；CLI 接著自動重新 claim 並建立 tunnel。只有在真的需要持久租約或多 replica 時，才需要啟用 Redis。
 

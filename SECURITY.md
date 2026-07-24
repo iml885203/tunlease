@@ -12,7 +12,7 @@ Use GitHub's private vulnerability reporting for this repository:
 Please include:
 
 - a description of the issue and its impact,
-- the affected component (gateway, sidecar, CLI, or the `tunnelclient` package),
+- the affected component (gateway, CLI, or the `tunnelclient` package),
 - steps to reproduce or a proof of concept, and
 - any relevant version, commit, or configuration details.
 
@@ -27,7 +27,7 @@ machine and **fails open** to the original application for everything else.
 Security-relevant areas include:
 
 - the exclusive-lease and path-allowlist enforcement in the gateway,
-- authentication on the tunnel WebSocket upgrade and the sidecar route API,
+- authentication on the tunnel WebSocket upgrade and the claim API,
 - the TLS-pinned tunnel between client and gateway, and
 - the fail-open behaviour that must never expose unclaimed paths to a client.
 

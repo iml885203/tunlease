@@ -1,4 +1,14 @@
 #!/usr/bin/env bash
+# End-to-end test over docker compose, all-HTTP topology (mirrors e2e-local.sh):
+#   compose brings up redis + gateway (:18300) + app (testapp on :8081).
+# The gateway serves its control plane under /_tunlease and demuxes every other
+# path itself: a claimed path is tunnelled to the developer, anything else falls
+# open to fail_open_url (http://app:8081).
+#
+# Scenarios:
+#   1. before any claim, a third-party path falls open to the app
+#   2. after `tunle claim`, that path reaches the developer's local server
+#   3. after the claim dies and the TTL expires, the path falls open again
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -26,49 +36,40 @@ expect() {
   echo "OK: $label"
 }
 
+# Third-party traffic hits the gateway root; control plane is under /_tunlease.
+GATEWAY=http://127.0.0.1:18300
+
 cd "$ROOT"
 docker compose up -d --build
-wait_for http://127.0.0.1:28080/health
+wait_for "$GATEWAY/_tunlease/healthz"
 
-before=$(curl -fsS http://127.0.0.1:28080/test/callback)
-expect "app:/test/callback" "$before" "unclaimed path goes to app"
+# 1. Unclaimed path falls open to the app (fail_open_url).
+before=$(curl -fsS "$GATEWAY/test/callback")
+expect "app:/test/callback" "$before" "unclaimed path falls open to app"
 
 go build -o "$TMP/tunlease" ./cmd/tunlease
 go build -o "$TMP/testapp" ./cmd/testapp
 "$TMP/testapp" --listen 127.0.0.1:18500 --label local >"$TMP/local.log" 2>&1 & LOCAL_PID=$!
-TUNLEASE_GATEWAY=http://127.0.0.1:18300 TUNLEASE_TOKEN=e2e-token TUNLEASE_STATE_FILE="$TMP/state.json" \
+
+# CLI's gateway base URL; the client auto-adds the /_tunlease control prefix.
+TUNLEASE_GATEWAY="$GATEWAY" TUNLEASE_TOKEN=e2e-token TUNLEASE_STATE_FILE="$TMP/state.json" \
   "$TMP/tunlease" claim --to 18500 /test/callback >"$TMP/claim.log" 2>&1 & CLAIM_PID=$!
 
+# 2. Claimed path crosses the reverse tunnel to the developer's local server.
 for _ in $(seq 1 30); do
-  got=$(curl -fsS http://127.0.0.1:28080/test/callback 2>/dev/null || true)
+  got=$(curl -fsS "$GATEWAY/test/callback" 2>/dev/null || true)
   [ "$got" = "local:/test/callback" ] && break
   sleep 1
 done
 expect "local:/test/callback" "$got" "claimed path crosses reverse tunnel to localhost"
 
+# 3. Kill the claim; after the TTL expires the path falls open to the app again.
 kill -9 "$CLAIM_PID" 2>/dev/null || true; wait "$CLAIM_PID" 2>/dev/null || true; CLAIM_PID=""
-sleep 1
-fallback=$(curl -fsS http://127.0.0.1:28080/test/callback)
-expect "app:/test/callback" "$fallback" "dead tunnel falls back to app immediately"
-curl -fsS http://127.0.0.1:29090/metrics | grep -q 'devproxy_sidecar_requests_total{route="fallback"} 1'
-echo "OK: fallback metric incremented"
-
-sleep 9
-expired=$(curl -fsS http://127.0.0.1:28080/test/callback)
-expect "app:/test/callback" "$expired" "Redis TTL expiry removes route"
-
-# Claim again, then remove the control plane. Every request must still succeed;
-# old route is retained briefly but tunnel failure falls back, then stale table clears.
-TUNLEASE_GATEWAY=http://127.0.0.1:18300 TUNLEASE_TOKEN=e2e-token TUNLEASE_STATE_FILE="$TMP/state2.json" \
-  "$TMP/tunlease" claim --to 18500 /test/stale >"$TMP/claim2.log" 2>&1 & CLAIM_PID=$!
-for _ in $(seq 1 30); do
-  got=$(curl -fsS http://127.0.0.1:28080/test/stale 2>/dev/null || true); [ "$got" = "local:/test/stale" ] && break; sleep 1
-done
-expect "local:/test/stale" "$got" "second claim active"
-docker compose stop gateway >/dev/null
-for _ in $(seq 1 8); do
-  got=$(curl -fsS http://127.0.0.1:28080/test/stale)
-  expect "app:/test/stale" "$got" "gateway outage remains fail-open"
+for _ in $(seq 1 15); do
+  got=$(curl -fsS "$GATEWAY/test/callback" 2>/dev/null || true)
+  [ "$got" = "app:/test/callback" ] && break
   sleep 1
 done
+expect "app:/test/callback" "$got" "TTL expiry falls open to app again"
+
 echo "ALL COMPOSE E2E CHECKS PASSED"

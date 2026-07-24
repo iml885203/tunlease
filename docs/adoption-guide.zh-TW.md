@@ -13,19 +13,16 @@
 
 Tunlease 是專注於 callback 開發的 tunnel，不是通用 VPN 或 proxy。它的安全模型
 包含 path allowlist、互斥且有 TTL 的 lease、可選的 token authentication、
-structured audit log，以及 fail-open 回原始 app。系統與失敗路徑請看
-[架構](architecture.zh-TW.md)，protocol 與安全細節請看
-[v1 規格](spec-v1.zh-TW.md)。
+structured audit log，以及 fail-open 回原始 app。系統、失敗路徑與 protocol
+細節請看[架構](architecture.zh-TW.md)。
 
 ## 2. 取得 image
 
-- [ ] Build `tunlease-gateway` 與 `tunlease-sidecar`，並 push 到你的 cluster
-  可以 pull 的 registry。
+- [ ] Build `tunlease-gateway`，並 push 到你的 cluster 可以 pull 的 registry。
 
-手動 GitLab CI job `build-images-self-hosted` 使用 `docker buildx` build 兩個
+手動 GitLab CI job `build-images-self-hosted` 使用 `docker buildx` build gateway
 Dockerfile target，產出 `linux/amd64` 與 `linux/arm64`，接著直接 push
-`$TARGET_REGISTRY/tunlease-gateway:$TAG` 與
-`$TARGET_REGISTRY/tunlease-sidecar:$TAG`。`TARGET_REGISTRY` 預設為
+`$TARGET_REGISTRY/tunlease-gateway:$TAG`。`TARGET_REGISTRY` 預設為
 `$CI_REGISTRY_IMAGE`；registry host 與 credential 則分別透過
 `REGISTRY_HOST`、`REGISTRY_USER`、`REGISTRY_PASSWORD` 提供。
 
@@ -43,12 +40,9 @@ export TUNLEASE_TAG="<COMMIT_SHA_OR_RELEASE_TAG>"
 skopeo copy --all \
   "docker://<ACCESSIBLE_SOURCE_REGISTRY>/tunlease-gateway:$TUNLEASE_TAG" \
   "docker://<YOUR_REGISTRY>/tunlease-gateway:$TUNLEASE_TAG"
-skopeo copy --all \
-  "docker://<ACCESSIBLE_SOURCE_REGISTRY>/tunlease-sidecar:$TUNLEASE_TAG" \
-  "docker://<YOUR_REGISTRY>/tunlease-sidecar:$TUNLEASE_TAG"
 ```
 
-Gateway 與 sidecar 請使用相同 tag。部署前提與 image override 請看
+部署前提與 image override 請看
 [平台部署指南](platform-deployment.zh-TW.md)。
 
 ## 3. 部署 Gateway
@@ -60,13 +54,14 @@ API 與反向 tunnel 共用同一個 HTTP Ingress path；tunnel 是 WebSocket
 connection。Ingress 或 load balancer 必須保留 WebSocket upgrade，read/send
 timeout 至少設為 3600 秒。不需要 UDP listener 或 forwarding。
 
-## 4. 加入 Sidecar
+## 4. 用 Gateway 前置 App
 
-- [ ] 在擁有固定 endpoint 的 workload 旁，依照
-  [平台部署 → 加入 Sidecar](platform-deployment.zh-TW.md#加入-sidecar)。
+- [ ] 依照
+  [平台部署 → 用 Gateway 前置 App](platform-deployment.zh-TW.md#用-gateway-前置-app)，
+  讓固定 endpoint 的 Ingress 導向 gateway。
 
-Sidecar 會把已認領的 path 經 gateway 轉送，其餘 traffic 則 fail-open 回 app。
-Gateway 與 sidecar config 中的 `sidecar_token` 必須相同。
+Gateway 會把已認領的 path 經 tunnel 轉送，其餘 traffic 則 fail-open 回 app。
+把 `fail_open_url` 設為 app 的 Service。
 
 ## 5. 開發者認領 path
 

@@ -13,19 +13,18 @@ flowchart LR
     ThirdParty[Third-party system] -->|"1. Calls the same fixed URL"| Ingress[Existing Ingress]
 
     subgraph Shared[Shared environment]
-        Ingress -->|"2. Request reaches the workload"| Sidecar[tunlease-sidecar<br/>path router]
-        Sidecar -->|"3. Claimed path"| Gateway[tunlease-gateway]
-        Sidecar -.->|"Fallback: unclaimed or unavailable"| App[Original application]
+        Ingress -->|"2. Request reaches the gateway"| Gateway[tunlease-gateway<br/>path router]
+        Gateway -.->|"3. Fallback: unclaimed or unavailable"| App[Original application]
     end
 
     subgraph Laptop[Developer machine]
         CLI[tunle CLI] -->|"5. Forwards to localhost"| Local[Local service]
     end
 
-    Gateway ==>|"4. Existing reverse tunnel"| CLI
+    Gateway ==>|"4. Claimed path over the reverse tunnel"| CLI
 
     classDef tunlease fill:#dbeafe,stroke:#2563eb,color:#1e3a8a,stroke-width:2px;
-    class CLI,Sidecar,Gateway tunlease;
+    class CLI,Gateway tunlease;
     style Shared fill:#f8fafc,stroke:#94a3b8,color:#334155
     style Laptop fill:#f8fafc,stroke:#94a3b8,color:#334155
 ```
@@ -120,21 +119,24 @@ It is all one `tunle` binary; a subcommand selects the role:
 | Command | Runs on | Responsibility |
 |---|---|---|
 | `tunle claim` (also `list` / `release`) | Developer machine | Claim a path, hold the lease, reverse tunnel, heartbeat |
-| `tunle gateway` | Shared environment | API, lease registry, and reverse-tunnel server |
-| `tunle sidecar` | Fixed-endpoint workload | Path routing; falls back to the original app on any failure |
-| `tunle serve` | Single host in front of one app | Gateway **and** router in one process |
+| `tunle gateway` | In front of the app | API, lease registry, reverse-tunnel server, path demux, and fail-open to the app |
+| `tunle serve` | Single host in front of one app | Convenience wrapper for `gateway` with `fail_open_url` set to `--app` |
 
-There are two ways to run the server side:
+The gateway sits in front of the app and does everything on the server side. It
+serves its control plane under `control_prefix` (default `/_tunlease`); every
+other path is third-party traffic — tunnelled to the developer when a claim
+matches, otherwise proxied to `fail_open_url` (the original app), otherwise 404.
+There is no separate sidecar process.
 
 - **Single host, one app** — run `tunle serve --app http://localhost:3000`. One
   process fronts the app: claimed paths tunnel to a developer, everything else
-  fails open to the app. No gateway/sidecar split, no Kubernetes.
-- **Shared platform, many apps** — run `tunle gateway` once, and add
-  `tunle sidecar` beside each fixed-endpoint workload. This is the model the
-  Helm chart and sidecar patch deploy.
+  fails open to the app. No Kubernetes.
+- **Shared platform** — run `tunle gateway` with `fail_open_url` pointed at the
+  app's Service and deploy it in front of the app (Ingress → gateway). This is
+  the model the Helm chart deploys.
 
-None of these call the Kubernetes API, so Kubernetes is not required — it is
-just the recommended target for the multi-app model.
+The gateway does not call the Kubernetes API, so Kubernetes is not required — it
+is just the recommended target for the platform model.
 
 ## Embedding the tunnel client
 
@@ -157,11 +159,11 @@ git config core.hooksPath .githooks
 ```
 
 ```bash
-make build   # Build all three binaries into bin/
+make build   # Build the tunle binary into bin/
 make test    # Run the Go test suite
 make lint    # Run the pinned golangci-lint container
 make preflight # Build, vet, race-test, lint, and reject formatting drift
-make e2e     # Redis + gateway + sidecar + app + real CLI
+make e2e     # Redis + gateway + app + real CLI
 ```
 
 ## Documentation
@@ -171,14 +173,13 @@ Choose the shortest path for your role:
 - **Team new to Tunlease:** [Adoption guide](docs/adoption-guide.md) — go from fit check to images, deployment, developer claims, and end-to-end verification ([繁中](docs/adoption-guide.zh-TW.md))
 - **Developer receiving callbacks:** [Developer guide](docs/developer-guide.md) — installation, configuration, CLI usage, and troubleshooting ([繁中](docs/developer-guide.zh-TW.md))
 - **Platform team self-hosting the gateway:** [Platform deployment guide → Install the gateway](docs/platform-deployment.md#install-the-gateway) — prerequisites (images, Ingress, DNS/TLS), Helm install, and security ([繁中](docs/platform-deployment.zh-TW.md#安裝-gateway))
-- **Service owner adding the sidecar:** [Platform deployment guide → Add the sidecar](docs/platform-deployment.md#add-the-sidecar) — patch the workload, sidecar env, and the shared route-table token ([繁中](docs/platform-deployment.zh-TW.md#加入-sidecar))
+- **Service owner fronting an app:** [Platform deployment guide → Front the app with the gateway](docs/platform-deployment.md#front-the-app-with-the-gateway) — put the gateway in front of the app and point `fail_open_url` at the app's Service ([繁中](docs/platform-deployment.zh-TW.md#用-gateway-前置-app))
 - **Contributor understanding the system:** [Architecture](docs/architecture.md) — control/data planes, routing, lifecycle, and recovery ([繁中](docs/architecture.zh-TW.md))
-- **Client or protocol implementer:** [v1 protocol specification](docs/spec-v1.md) — HTTP/tunnel contract and design boundaries ([繁中](docs/spec-v1.zh-TW.md))
 - **Go application author:** [Embedding the Go client](docs/go-client.md) — module setup, lifecycle API, errors, and testing ([繁中](docs/go-client.zh-TW.md))
 
 ## Status
 
-The v0.1 product baseline is complete. The gateway, CLI, reusable Go client, and sidecar are all functional: the public-endpoint-to-localhost tunnel, the 10-minute idle tunnel timeout, fail-open behavior, the in-memory and optional Redis registry, installation and self-update, and cross-platform (Linux/macOS/Windows) binaries are all in place.
+The v0.1 product baseline is complete. The gateway, CLI, and reusable Go client are all functional: the public-endpoint-to-localhost tunnel, the 10-minute idle tunnel timeout, fail-open behavior, the in-memory and optional Redis registry, installation and self-update, and cross-platform (Linux/macOS/Windows) binaries are all in place.
 
 A single gateway replica with the in-memory registry is a valid deployment. A gateway restart drops leases and briefly returns claimed paths to the original app; the CLI then claims again and rebuilds the tunnel automatically. Redis is only needed when persistent leases or multiple gateway replicas provide a concrete benefit.
 

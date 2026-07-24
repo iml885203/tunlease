@@ -7,14 +7,14 @@ assignees: ""
 ---
 
 **Component**
-Gateway / sidecar / CLI / `tunnelclient` package (delete as appropriate).
+Gateway / CLI / `tunnelclient` package (delete as appropriate).
 
 **Describe the bug**
 A clear and concise description of what the bug is.
 
 **To reproduce**
 Steps to reproduce the behavior, including the claim/path and any relevant
-gateway or sidecar configuration.
+gateway configuration.
 
 **Expected behavior**
 What you expected to happen.
