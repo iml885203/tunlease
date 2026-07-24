@@ -15,6 +15,8 @@ type stateClaim struct {
 	Gateway string   `json:"gateway"`
 	Paths   []string `json:"paths"`
 	To      int      `json:"to"`
+	// PID is the detached daemon holding this claim (0 for a foreground claim).
+	PID int `json:"pid,omitempty"`
 }
 type state struct {
 	Claims []stateClaim `json:"claims"`

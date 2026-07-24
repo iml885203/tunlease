@@ -88,6 +88,7 @@ tunle claim --to 8080 /webhooks/provider/callback/*
 - Wildcard 只能放在最後；`/a/*/b` 不合法。
 - 互相重疊的 prefix 不能同時 claim；衝突時會顯示目前 owner 與到期時間。
 - `claim` 會留在 foreground 維持 tunnel 與 heartbeat；Ctrl+C 會釋放租約。Process 意外結束後，server 會在 TTL 到期時清除租約。
+- `--detach` 讓 claim 在背景執行並立即返回（印出 claim id 與 log 路徑），適合無法持有阻塞式 process 的 script 或 agent。用 `tunle release`（依 path 或 `--to`）停止。
 - Claim 期間，該 path 下真正的 staging callback 都會到本機；其他 path 不受影響。
 
 多個 path 可以共用同一個 local port：

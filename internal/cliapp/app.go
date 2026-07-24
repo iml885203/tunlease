@@ -67,15 +67,12 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 	}
 
 	var to int
+	var detach, daemon bool
 	claimCmd := &cobra.Command{
 		Use:   "claim PATH [PATH...] --to PORT",
 		Short: "Claim path(s), open the tunnel, and keep the lease alive (Ctrl+C releases)",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			c, e := get()
-			if e != nil {
-				return e
-			}
 			paths := make([]string, 0, len(args))
 			for _, p := range args {
 				n, e := NormalizePath(p)
@@ -84,10 +81,26 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 				}
 				paths = append(paths, n)
 			}
-			return runClaim(c, paths, to)
+			if detach {
+				// Non-blocking: spawn a background daemon and return once the
+				// tunnel is up. Pass the connection options through explicitly.
+				scheme := os.Getenv("TUNLEASE_DEFAULT_SCHEME")
+				if scheme == "" {
+					scheme = loadConfig().DefaultScheme
+				}
+				return runDetach(paths, to, gateway, token, insecure || os.Getenv("TUNLEASE_INSECURE") != "", scheme)
+			}
+			c, e := get()
+			if e != nil {
+				return e
+			}
+			return runClaim(c, paths, to, daemon)
 		},
 	}
 	claimCmd.Flags().IntVar(&to, "to", 0, "local port to receive the traffic")
+	claimCmd.Flags().BoolVar(&detach, "detach", false, "run in the background and return immediately (release with `tunle release`)")
+	claimCmd.Flags().BoolVar(&daemon, "_daemon", false, "")
+	_ = claimCmd.Flags().MarkHidden("_daemon")
 	_ = claimCmd.MarkFlagRequired("to")
 	addClientFlags(claimCmd)
 	root.AddCommand(claimCmd)
@@ -137,7 +150,7 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 	return root
 }
 
-func runClaim(c *tunnelclient.Client, paths []string, to int) error {
+func runClaim(c *tunnelclient.Client, paths []string, to int, daemon bool) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -146,8 +159,12 @@ func runClaim(c *tunnelclient.Client, paths []string, to int) error {
 		return e
 	}
 	cl := session.Claim()
+	pid := 0
+	if daemon {
+		pid = os.Getpid() // recorded so `tunle release` can stop this daemon
+	}
 	st := loadState()
-	st.add(stateClaim{ClaimID: cl.ID, Gateway: c.Gateway(), Paths: cl.Paths, To: to})
+	st.add(stateClaim{ClaimID: cl.ID, Gateway: c.Gateway(), Paths: cl.Paths, To: to, PID: pid})
 	saveState(st)
 	defer cleanupSessionState(c.Gateway(), to, cl.Paths)
 
@@ -167,7 +184,7 @@ func runClaim(c *tunnelclient.Client, paths []string, to int) error {
 			if current.ID != cl.ID {
 				st := loadState()
 				st.removeSession(c.Gateway(), to, cl.Paths)
-				st.add(stateClaim{ClaimID: current.ID, Gateway: c.Gateway(), Paths: current.Paths, To: to})
+				st.add(stateClaim{ClaimID: current.ID, Gateway: c.Gateway(), Paths: current.Paths, To: to, PID: pid})
 				saveState(st)
 				cl = current
 			}
@@ -184,7 +201,7 @@ func runClaim(c *tunnelclient.Client, paths []string, to int) error {
 				cl = event.Claim
 				st := loadState()
 				st.removeSession(c.Gateway(), to, cl.Paths)
-				st.add(stateClaim{ClaimID: cl.ID, Gateway: c.Gateway(), Paths: cl.Paths, To: to})
+				st.add(stateClaim{ClaimID: cl.ID, Gateway: c.Gateway(), Paths: cl.Paths, To: to, PID: pid})
 				saveState(st)
 				fmt.Printf("re-claimed %s (claim %s)\n", strings.Join(cl.Paths, " "), shortID(cl.ID))
 			case tunnelclient.EventHeartbeatWarning:
@@ -246,6 +263,7 @@ func runRelease(ctx context.Context, c *tunnelclient.Client, args []string, relT
 				if e := c.Release(ctx, s.ClaimID); e != nil {
 					return e
 				}
+				stopDaemon(s) // stop the background daemon, if this was --detach
 				st.removeByID(s.ClaimID)
 				fmt.Printf("released %s\n", strings.Join(s.Paths, " "))
 				released++
@@ -267,6 +285,7 @@ func runRelease(ctx context.Context, c *tunnelclient.Client, args []string, relT
 			if e := c.Release(ctx, s.ClaimID); e != nil {
 				return e
 			}
+			stopDaemon(s) // stop the background daemon, if this was --detach
 			st.removeByID(s.ClaimID)
 			saveState(st)
 			fmt.Printf("released %s\n", target)

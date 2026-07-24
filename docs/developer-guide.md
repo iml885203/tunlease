@@ -91,6 +91,7 @@ tunle claim --to 8080 /webhooks/provider/callback/*
 - A wildcard is only valid at the end; `/a/*/b` is invalid.
 - Overlapping prefixes cannot be claimed simultaneously. A conflict reports the current owner and expiry time.
 - `claim` stays in the foreground to maintain the tunnel and heartbeat. Ctrl+C releases the lease. If the process dies, the server removes it after its TTL.
+- `--detach` runs the claim in the background and returns immediately (printing the claim id and a log path). Useful for scripts and agents that can't hold a blocking process. Stop it with `tunle release` (by path or `--to`).
 - During a claim, all real staging callbacks under that path reach the local service. Unclaimed paths are unaffected.
 
 Multiple paths can share one local port:
