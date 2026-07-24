@@ -182,7 +182,7 @@ Rollout 後確認 gateway Pod Ready，並先測試未認領 path 仍能到達 ap
 ## 失敗語意
 
 - 沒有符合 claim 的 path 會 proxy 到 `fail_open_url`（未設定時回傳 404）。
-- Tunnel dialing 或 response header 超過一秒時，該 request 立即 fallback 到 app。
+- Request 的 path 沒有對應的 active claim，或該開發者 tunnel 未連上時，該 request fallback 到 app。
 - Gateway 或 CLI 故障只能影響開發 tunnel，不能影響原始服務可用性。
 
 使用 memory registry 時，替換 gateway Pod 會刻意移除所有 claim。CLI 在 heartbeat 發現 lease 消失後重新 claim 並建立 tunnel；中間 gateway fail-open 回 app。Redis 可以保留 lease record，但無法保留 tunnel session 或 Pod IP，因此仍不能免除 reconnect。

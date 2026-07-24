@@ -33,10 +33,11 @@ spec:
           ports:
             - name: http
               containerPort: 8300
+          {{- $healthz := printf "%s/healthz" (default "/_tunlease" .Values.config.controlPrefix | trimSuffix "/") }}
           readinessProbe:
-            httpGet: {path: /healthz, port: http}
+            httpGet: {path: {{ $healthz | quote }}, port: http}
           livenessProbe:
-            httpGet: {path: /healthz, port: http}
+            httpGet: {path: {{ $healthz | quote }}, port: http}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:

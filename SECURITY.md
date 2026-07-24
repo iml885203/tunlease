@@ -31,6 +31,25 @@ Security-relevant areas include:
 - the TLS-pinned tunnel between client and gateway, and
 - the fail-open behaviour that must never expose unclaimed paths to a client.
 
+## Authentication and ownership
+
+You never set an owner yourself — the gateway assigns one automatically, and it
+governs who may **release** a claim (only its owner, or an admin, can).
+
+- **Gateway with no tokens** (the default): authentication is off. Anyone who
+  can reach it can claim, and every claim shares the `anonymous` owner — so any
+  client can also list or release any other's claim. Fine on a trusted network.
+- **Gateway with tokens configured**: each token maps to an owner name in the
+  gateway config. A client sends `Authorization: Bearer <token>`; the gateway
+  looks it up server-side (a client can't assert an owner it has no token for),
+  and a claim is then owned by that token's owner and only it can release it.
+
+Configure per-developer tokens for any gateway reachable outside a trusted
+network. See the [platform deployment guide](docs/platform-deployment.md) for
+token setup.
+
+## Threat model
+
 Tunlease is intended for controlled, authorized development and staging
 environments. Exposing a gateway to untrusted networks without authentication
 configured is outside the intended threat model.

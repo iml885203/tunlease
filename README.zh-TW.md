@@ -21,26 +21,18 @@ tunle claim /webhooks/stripe/* --to 8080 --gateway staging.myapp.com
 
 ```mermaid
 flowchart LR
-    ThirdParty[第三方系統] -->|"1. 呼叫同一個固定 URL"| Ingress[既有 Ingress]
+    TP["第三方<br/>(例如 Stripe)"] -->|"呼叫固定 URL"| GW[tunlease gateway]
 
-    subgraph Shared[共用環境]
-        Ingress -->|"2. Request 進入 gateway"| Gateway[tunlease-gateway<br/>path router]
-        Gateway -.->|"3. Fallback：未認領或服務異常"| App[原始應用程式]
-    end
-
-    subgraph Laptop[開發者電腦]
-        CLI[tunle CLI] -->|"5. 轉送到 localhost"| Local[本機服務]
-    end
-
-    Gateway ==>|"4. 已認領的 path 走反向 tunnel"| CLI
+    GW -->|"已認領的 path"| CLI[tunle CLI]
+    GW -->|"其他所有 path<br/>(fail-open)"| App[原始 app]
+    CLI -->|"反向 tunnel"| Local[你的本機服務]
 
     classDef tunlease fill:#dbeafe,stroke:#2563eb,color:#1e3a8a,stroke-width:2px;
-    class CLI,Gateway tunlease;
-    style Shared fill:#f8fafc,stroke:#94a3b8,color:#334155
-    style Laptop fill:#f8fafc,stroke:#94a3b8,color:#334155
+    class GW,CLI tunlease;
 ```
 
-第三方始終呼叫同一個 URL。開發者認領 path 後，只有該 path 會沿編號路徑進入 localhost；其他流量仍由原始應用程式處理。藍色節點是 Tunlease 擁有並發布的元件；其他節點都是環境中原本就存在的系統。
+Gateway 坐在固定 URL 上，依 path 分流：**已認領**的 path 走 tunnel 到你的電腦；
+**其他所有** path 則 fail-open 到真正的 app。藍色節點是 Tunlease 的；其餘本來就存在。
 
 安全模型包含 path allowlist、互斥且有 TTL 的租約、可選的 token 認證、audit log，以及 fail-open routing。開發工具失效時，流量會回到原始應用程式，不影響既有 endpoint 的可用性。
 
@@ -175,7 +167,7 @@ make e2e        # Redis + gateway + app + 真實 CLI
 
 ## 目前狀態
 
-v0.1 產品 baseline 已完成。Gateway、CLI 與可重用 Go client 皆可運作：public endpoint → localhost tunnel、10 分鐘 idle tunnel timeout、fail-open、in-memory 與可選的 Redis registry、安裝與自動更新，以及跨平台（Linux/macOS/Windows）binary 都已具備。
+v0.1 產品 baseline 已完成。Gateway、CLI 與可重用 Go client 皆可運作：public endpoint → localhost tunnel、fail-open、in-memory 與可選的 Redis registry、安裝與自動更新，以及跨平台（Linux/macOS/Windows）binary 都已具備。
 
 單一 gateway replica 搭配 memory registry 是一種有效的部署方式。Gateway 重啟時，claim 會短暫消失，流量先 fail-open 回原始 app；CLI 接著自動重新 claim 並建立 tunnel。只有在真的需要持久租約或多 replica 時，才需要啟用 Redis。
 

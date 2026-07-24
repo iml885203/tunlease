@@ -22,7 +22,7 @@ try {
     }
 
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-    $Target = Join-Path $InstallDir "tunlease.exe"
+    $Target = Join-Path $InstallDir "tunle.exe"
     if (Test-Path $Target) {
         Copy-Item -LiteralPath $Target -Destination "$Target.prev" -Force
     }

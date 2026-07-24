@@ -21,26 +21,19 @@ Unlike ngrok/localtunnel/bore, it does **not** give you a new URL. [How it compa
 
 ```mermaid
 flowchart LR
-    ThirdParty[Third-party system] -->|"1. Calls the same fixed URL"| Ingress[Existing Ingress]
+    TP["Third party<br/>(e.g. Stripe)"] -->|"calls the fixed URL"| GW[tunlease gateway]
 
-    subgraph Shared[Shared environment]
-        Ingress -->|"2. Request reaches the gateway"| Gateway[tunlease-gateway<br/>path router]
-        Gateway -.->|"3. Fallback: unclaimed or unavailable"| App[Original application]
-    end
-
-    subgraph Laptop[Developer machine]
-        CLI[tunle CLI] -->|"5. Forwards to localhost"| Local[Local service]
-    end
-
-    Gateway ==>|"4. Claimed path over the reverse tunnel"| CLI
+    GW -->|"claimed path"| CLI[tunle CLI]
+    GW -->|"every other path<br/>(fail-open)"| App[Original app]
+    CLI -->|"reverse tunnel"| Local[Your local service]
 
     classDef tunlease fill:#dbeafe,stroke:#2563eb,color:#1e3a8a,stroke-width:2px;
-    class CLI,Gateway tunlease;
-    style Shared fill:#f8fafc,stroke:#94a3b8,color:#334155
-    style Laptop fill:#f8fafc,stroke:#94a3b8,color:#334155
+    class GW,CLI tunlease;
 ```
 
-The third party keeps calling the same URL. When a developer claims a path, only that path follows the numbered route to localhost; everything else continues to the original application. Blue nodes are components owned and shipped by Tunlease. Neutral nodes already exist in the environment.
+The gateway sits on the fixed URL and forks by path: a **claimed** path is
+tunnelled to your laptop; **every other** path falls open to the real app. Blue
+nodes are Tunlease's; the rest already exist.
 
 The safety model combines a path allowlist, exclusive leases with TTLs, optional token authentication, audit logs, and fail-open routing. If the development tooling fails, traffic returns to the original application.
 
@@ -190,7 +183,7 @@ Choose the shortest path for your role:
 
 ## Status
 
-The v0.1 product baseline is complete. The gateway, CLI, and reusable Go client are all functional: the public-endpoint-to-localhost tunnel, the 10-minute idle tunnel timeout, fail-open behavior, the in-memory and optional Redis registry, installation and self-update, and cross-platform (Linux/macOS/Windows) binaries are all in place.
+The v0.1 product baseline is complete. The gateway, CLI, and reusable Go client are all functional: the public-endpoint-to-localhost tunnel, fail-open behavior, the in-memory and optional Redis registry, installation and self-update, and cross-platform (Linux/macOS/Windows) binaries are all in place.
 
 A single gateway replica with the in-memory registry is a valid deployment. A gateway restart drops leases and briefly returns claimed paths to the original app; the CLI then claims again and rebuilds the tunnel automatically. Redis is only needed when persistent leases or multiple gateway replicas provide a concrete benefit.
 

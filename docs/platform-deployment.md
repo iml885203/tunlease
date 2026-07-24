@@ -196,7 +196,7 @@ After rollout, confirm the gateway Pod is Ready and test an unclaimed path to en
 ## Failure semantics
 
 - A path with no matching claim is proxied to `fail_open_url` (or returns 404 when it is unset).
-- If tunnel dialing or response headers exceed one second, that request immediately falls back to the app.
+- A request whose path matches no active claim, or whose developer tunnel is not connected, falls back to the app.
 - Gateway or CLI failure must affect only the development tunnel, never availability of the original service.
 
 With the in-memory registry, replacing the gateway Pod intentionally removes all claims. Active CLIs detect the missing lease on heartbeat, create a new claim, and rebuild their tunnels. During that interval the gateway fails open to the app. Redis would preserve lease records, but it would not preserve the tunnel session or Pod IP, so it does not eliminate tunnel reconnection by itself.
