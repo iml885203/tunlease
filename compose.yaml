@@ -17,7 +17,6 @@ services:
       - ./testdata/compose/gateway.yaml:/etc/tunlease/config.yaml:ro
     ports:
       - "18300:8300"
-      - "42000-42007:42000-42007"
     depends_on:
       redis:
         condition: service_healthy

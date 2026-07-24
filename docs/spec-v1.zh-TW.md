@@ -36,21 +36,21 @@
 
 | Endpoint | 用途 | 成功 | 主要錯誤 |
 |---|---|---|---|
-| `POST /api/v1/claims` | Claim paths；body：`{"paths":["/api/callback/*"],"local":"localhost:5000"}` | `201`，包含 `claim_id`、`owner`、`paths`、`remote_port`、`expires_at`、`ttl_seconds`、`heartbeat_seconds`、`tunnel_fingerprint` | `409 path_claimed`、`403 path_not_allowed`、`401` |
+| `POST /api/v1/claims` | Claim paths；body：`{"paths":["/api/callback/*"],"local":"localhost:5000"}` | `201`，包含 `claim_id`、`owner`、`paths`、`expires_at`、`ttl_seconds`、`heartbeat_seconds`、`tunnel_fingerprint` | `409 path_claimed`、`403 path_not_allowed`、`401`、`503 claim_limit_reached` |
 | `POST /api/v1/claims/{id}/heartbeat` | 延長 lease 並更新 tunnel identity | `200`，包含 `expires_at` 與 `tunnel_fingerprint` | `404 claim_expired`；client 必須重新 claim 並建立 tunnel |
 | `DELETE /api/v1/claims/{id}` | Idempotent release | `204` | `401`；僅 owner 或 admin 可 release |
 | `GET /api/v1/claims` | 列出 active lease | `200`，包含 `claims` | `401` |
 | `GET /api/v1/routes` | Sidecar route table，支援 `ETag`／`If-None-Match` | `200`，包含 `version` 與 routes；或 `304` | 可要求專用 sidecar token |
 | `GET /healthz` | Liveness/readiness | `200` | — |
 
-Route 包含 `path_prefix`、`tunnel_addr`、`claim_id`、`owner`、`expires_at`。Claim 的 `local` 只供顯示；CLI 固定把實際 target 指向 `127.0.0.1:<--to>`。
+Route 包含 `path_prefix`、`claim_id`、`owner`、`expires_at`。Claim 的 `local` 只供顯示；CLI 固定把實際 target 指向 `127.0.0.1:<--to>`。
 
 ### 2.4 Tunnel establishment
 
-1. Client 建立 claim 並取得 `remote_port` 與 `tunnel_fingerprint`。
+1. Client 建立 claim 並取得 `claim_id` 與 `tunnel_fingerprint`。
 2. Client 使用 `X-Tunlease-Claim` 連到 `wss://<host>/tunnel`；啟用認證時另帶 bearer token。TLS 1.3 跑在 WebSocket 內，client pin claim response 回傳的 fingerprint。
-3. Gateway 必須驗證 claim 是 active，且屬於目前 authenticated 或 anonymous identity；client 不能指定任意 remote port 或 target。
-4. `tunnel_addr` 是 gateway 的 `pod_ip:remote_port`；sidecar 直接連線，不經 Service，因此 v1 使用單一 gateway replica。
+3. Gateway 必須驗證 claim 是 active，且屬於目前 authenticated 或 anonymous identity。
+4. 第三方流量以 HTTP 進入 gateway 單一 listener，依 path 分流到對應 tunnel；沒有 per-claim TCP port。因此 v1 使用單一 gateway replica。
 5. Tunnel 每 25 秒送 yamux keepalive；Ingress read/send timeout 至少 3600 秒。
 
 ### 2.5 Lease 與 path 語意

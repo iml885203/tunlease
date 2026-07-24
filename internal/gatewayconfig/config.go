@@ -7,10 +7,6 @@ import (
 	"time"
 )
 
-type PortPool struct {
-	Start int `yaml:"start"`
-	End   int `yaml:"end"`
-}
 type Token struct {
 	Owner string `yaml:"owner"`
 	Token string `yaml:"token"`
@@ -18,7 +14,7 @@ type Token struct {
 type Config struct {
 	Listen           string   `yaml:"listen"`
 	AdvertiseHost    string   `yaml:"advertise_host"`
-	PortPool         PortPool `yaml:"port_pool"`
+	MaxClaims        int      `yaml:"max_claims"`
 	TTLSeconds       int      `yaml:"ttl_seconds"`
 	HeartbeatSeconds int      `yaml:"heartbeat_seconds"`
 	Whitelist        []string `yaml:"whitelist"`
@@ -39,6 +35,9 @@ func (c *Config) Defaults() {
 	if c.HeartbeatSeconds == 0 {
 		c.HeartbeatSeconds = 30
 	}
+	if c.MaxClaims == 0 {
+		c.MaxClaims = 64
+	}
 	if c.Registry == "" {
 		c.Registry = "memory"
 	}
@@ -47,8 +46,8 @@ func (c *Config) Defaults() {
 	}
 }
 func (c Config) Validate() error {
-	if c.PortPool.Start < 1 || c.PortPool.End < c.PortPool.Start || c.PortPool.End > 65535 {
-		return errors.New("invalid port_pool")
+	if c.MaxClaims < 1 {
+		return errors.New("max_claims must be greater than 0")
 	}
 	for _, t := range c.Tokens {
 		if t.Owner == "" || t.Token == "" {

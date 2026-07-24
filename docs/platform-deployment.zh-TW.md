@@ -138,7 +138,7 @@ kubectl -n tunlease rollout status deployment/tunlease
 
 Chart 預設使用 `/tunlease` Ingress path，並 rewrite 到 gateway root。`/api/v1/*` 與 `/tunnel` 共用 host/path；不要移除 WebSocket upgrade headers。
 
-Route 的 `tunnel_addr` 是 gateway Pod IP，所以 v1 必須維持 `replicaCount: 1`。Service 只承載 API 與 tunnel establishment；sidecar 會直接連 allocated remote port。
+Claim 狀態存在單一 gateway process（或共用的 Redis registry），第三方流量以 path 分流到已建立的 tunnel，因此使用 in-memory registry 時 v1 必須維持 `replicaCount: 1`。
 
 ## 加入 Sidecar
 

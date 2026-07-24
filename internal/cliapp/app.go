@@ -143,7 +143,7 @@ func runClaim(c *tunnelclient.Client, paths []string, to int) error {
 	saveState(st)
 	defer cleanupSessionState(c.Gateway(), to, cl.Paths)
 
-	fmt.Printf("claimed %s (claim %s, remote port %d)\n", strings.Join(cl.Paths, " "), shortID(cl.ID), cl.RemotePort)
+	fmt.Printf("claimed %s (claim %s)\n", strings.Join(cl.Paths, " "), shortID(cl.ID))
 	fmt.Printf("WARNING: real 3rd-party traffic for these paths now flows to localhost:%d\n", to)
 	fmt.Println("tunnel connected  (Ctrl+C to release)")
 	syncTicker := time.NewTicker(time.Second)
@@ -178,7 +178,7 @@ func runClaim(c *tunnelclient.Client, paths []string, to int) error {
 				st.removeSession(c.Gateway(), to, cl.Paths)
 				st.add(stateClaim{ClaimID: cl.ID, Gateway: c.Gateway(), Paths: cl.Paths, To: to})
 				saveState(st)
-				fmt.Printf("re-claimed %s (claim %s, remote port %d)\n", strings.Join(cl.Paths, " "), shortID(cl.ID), cl.RemotePort)
+				fmt.Printf("re-claimed %s (claim %s)\n", strings.Join(cl.Paths, " "), shortID(cl.ID))
 			case tunnelclient.EventHeartbeatWarning:
 				fmt.Printf("heartbeat failed (will retry): %v\n", event.Err)
 			case tunnelclient.EventTunnelReconnected:

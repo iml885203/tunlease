@@ -51,9 +51,9 @@ func buildStore(c gatewayconfig.Config, ttl time.Duration, logger *slog.Logger) 
 		if err != nil {
 			return nil, fmt.Errorf("parse redis_url: %w", err)
 		}
-		return registry.NewRedis(redis.NewClient(opts), c.RedisPrefix, c.PortPool.Start, c.PortPool.End, c.Whitelist, ttl, logger), nil
+		return registry.NewRedis(redis.NewClient(opts), c.RedisPrefix, c.MaxClaims, c.Whitelist, ttl, logger), nil
 	}
-	return registry.NewMemory(c.PortPool.Start, c.PortPool.End, c.Whitelist, ttl, nil, logger), nil
+	return registry.NewMemory(c.MaxClaims, c.Whitelist, ttl, nil, logger), nil
 }
 
 func gatewayTokens(c gatewayconfig.Config) map[string]gatewayd.Token {

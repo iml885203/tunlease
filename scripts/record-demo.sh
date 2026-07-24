@@ -22,7 +22,7 @@ export PATH="$BIN:$PATH"
 cat > "$TMP/demo.yaml" <<EOF
 listen: ":$PORT_GATEWAY"
 advertise_host: "127.0.0.1"
-port_pool: {start: 42060, end: 42064}
+max_claims: 64
 ttl_seconds: 30
 heartbeat_seconds: 10
 whitelist: ["/webhooks/"]

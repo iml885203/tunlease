@@ -26,9 +26,8 @@ func TestAnonymousSessionDataPathAndClose(t *testing.T) {
 	defer local.Close()
 	localPort := mustPort(t, local.URL)
 
-	remotePort := reservePort(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	store := registry.NewMemory(remotePort, remotePort, []string{"/test/"}, time.Minute, nil, logger)
+	store := registry.NewMemory(64, []string{"/test/"}, time.Minute, nil, logger)
 	tunnel, err := gatewayd.NewTunnel(store, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -115,9 +114,8 @@ func TestSessionReclaimsExpiredLeaseWithoutEventConsumer(t *testing.T) {
 	}
 	defer func() { _ = local.Close() }()
 
-	remotePort := reservePort(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	store := registry.NewMemory(remotePort, remotePort, []string{"/test/"}, 100*time.Millisecond, nil, logger)
+	store := registry.NewMemory(64, []string{"/test/"}, 100*time.Millisecond, nil, logger)
 	tunnel, err := gatewayd.NewTunnel(store, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -153,17 +151,4 @@ func TestSessionReclaimsExpiredLeaseWithoutEventConsumer(t *testing.T) {
 	if err := session.Close(); err != nil {
 		t.Fatal(err)
 	}
-}
-
-func reservePort(t *testing.T) int {
-	t.Helper()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	port := listener.Addr().(*net.TCPAddr).Port
-	if err := listener.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return port
 }

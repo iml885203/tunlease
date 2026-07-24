@@ -5,9 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/iml885203/tunlease/internal/registry"
-	"net"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -120,12 +118,12 @@ func (s *Server) claim(w http.ResponseWriter, r *http.Request) {
 		case errors.As(e, &n):
 			errj(w, 403, "path_not_allowed", "path is outside the allowlist", nil)
 		default:
-			errj(w, 503, "ports_exhausted", e.Error(), nil)
+			errj(w, 503, "claim_limit_reached", e.Error(), nil)
 		}
 		return
 	}
 	s.changed()
-	write(w, 201, map[string]any{"claim_id": c.ID, "owner": c.Owner, "paths": c.Paths, "remote_port": c.RemotePort, "expires_at": c.ExpiresAt, "ttl_seconds": int(s.TTL.Seconds()), "heartbeat_seconds": int(s.Heartbeat.Seconds()), "tunnel_fingerprint": s.TunnelFingerprint})
+	write(w, 201, map[string]any{"claim_id": c.ID, "owner": c.Owner, "paths": c.Paths, "expires_at": c.ExpiresAt, "ttl_seconds": int(s.TTL.Seconds()), "heartbeat_seconds": int(s.Heartbeat.Seconds()), "tunnel_fingerprint": s.TunnelFingerprint})
 }
 func (s *Server) heartbeat(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.auth(r)
@@ -194,15 +192,8 @@ func (s *Server) routes(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("ETag", etag)
 	routes := []map[string]any{}
 	for _, c := range s.Store.List() {
-		host := s.TunnelHost
-		if host == "" {
-			host = "127.0.0.1"
-		}
-		if net.ParseIP(host) == nil && strings.Contains(host, ":") {
-			host = strings.Split(host, ":")[0]
-		}
 		for _, path := range c.Paths {
-			routes = append(routes, map[string]any{"path_prefix": path, "tunnel_addr": net.JoinHostPort(host, strconv.Itoa(c.RemotePort)), "claim_id": c.ID, "owner": c.Owner, "expires_at": c.ExpiresAt})
+			routes = append(routes, map[string]any{"path_prefix": path, "claim_id": c.ID, "owner": c.Owner, "expires_at": c.ExpiresAt})
 		}
 	}
 	write(w, 200, map[string]any{"version": v, "routes": routes})

@@ -12,13 +12,10 @@ import (
 func TestRedisLifecycleConflictAndTTL(t *testing.T) {
 	mr := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	r := NewRedis(client, "test", 42000, 42001, []string{"/webhooks/"}, time.Minute, nil)
+	r := NewRedis(client, "test", 64, []string{"/webhooks/"}, time.Minute, nil)
 	a, err := r.Create("alice", []string{"/webhooks/a/*"}, "localhost:1")
-	if err != nil || a.RemotePort != 42000 {
+	if err != nil || a.ID == "" {
 		t.Fatalf("create: %#v %v", a, err)
-	}
-	if !r.OwnsPort("alice", 42000) || r.OwnsPort("bob", 42000) {
-		t.Fatal("owner port ACL incorrect")
 	}
 	if _, err = r.Create("bob", []string{"/webhooks/a/deep/*"}, ""); err == nil {
 		t.Fatal("expected overlap conflict")
@@ -32,8 +29,8 @@ func TestRedisLifecycleConflictAndTTL(t *testing.T) {
 		t.Fatal("version did not change after native Redis expiry")
 	}
 	b, err := r.Create("bob", []string{"/webhooks/b/*"}, "")
-	if err != nil || b.RemotePort != 42000 {
-		t.Fatalf("port not reused: %#v %v", b, err)
+	if err != nil || b.ID == "" {
+		t.Fatalf("slot not freed: %#v %v", b, err)
 	}
 	if _, err = r.Heartbeat("bob", b.ID); err != nil {
 		t.Fatal(err)

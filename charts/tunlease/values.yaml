@@ -24,9 +24,7 @@ config:
   registry: memory
   redisURL: ""
   redisPrefix: tunlease
-  portPool:
-    start: 42000
-    end: 42063
+  maxClaims: 64
   ttlSeconds: 300
   heartbeatSeconds: 30
   # Path allowlist (opt-in): an empty list allows any path. The prefixes below

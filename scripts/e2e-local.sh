@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 本機 e2e（spec §04 Phase 1 驗收）：
-#   1. gateway 起來，CLI claim 後 curl gateway 的 remote port → 到達本機 server
+#   1. gateway 起來，CLI claim 後 curl gateway（以 path demux）→ 到達本機 server
 #   2. 白名單外 403、同 path 衝突 409
 #   3. kill -9 CLI → TTL 過期 → 租約消失
 set -euo pipefail
@@ -8,7 +8,6 @@ cd "$(dirname "$0")/.."
 
 PORT_API=18300
 PORT_LOCAL=18500
-PORT_REMOTE=42010
 TOKEN=e2e-secret
 TMP=$(mktemp -d)
 PIDS=()
@@ -22,7 +21,7 @@ make build >/dev/null
 cat > "$TMP/config.yaml" <<EOF
 listen: ":$PORT_API"
 advertise_host: "127.0.0.1"
-port_pool: {start: $PORT_REMOTE, end: $((PORT_REMOTE + 1))}
+max_claims: 64
 ttl_seconds: 6
 heartbeat_seconds: 2
 whitelist: ["/test/"]
@@ -65,7 +64,7 @@ CLAIM_PID=$!
 PIDS+=($CLAIM_PID)
 
 for i in $(seq 1 30); do
-  BODY=$(curl -sf --max-time 2 "http://127.0.0.1:$PORT_REMOTE/test/cb" 2>/dev/null || true)
+  BODY=$(curl -sf --max-time 2 "http://127.0.0.1:$PORT_API/test/cb" 2>/dev/null || true)
   [ "$BODY" = "hello-from-local" ] && break
   [ "$i" = 30 ] && { cat "$TMP/claim.log" "$TMP/gateway.log" >&2; fail "tunnel did not deliver traffic"; }
   sleep 0.5
@@ -83,7 +82,7 @@ echo "OK: overlap 409 with claimed_by"
 ./bin/tunlease list | grep -q "(you)" || fail "list missing (you) marker"
 echo "OK: list shows own claim"
 
-# --- kill -9 → TTL 過期 → 租約消失、port 釋回 ---
+# --- kill -9 → TTL 過期 → 租約消失、claim 名額釋回 ---
 kill -9 "$CLAIM_PID"
 sleep 9
 CLAIMS=$(curl -sf -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$PORT_API/api/v1/claims")

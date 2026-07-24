@@ -23,7 +23,7 @@ func TestResolveAdvertiseHost(t *testing.T) {
 }
 
 func TestValidateAllowsNoClientTokens(t *testing.T) {
-	cfg := Config{PortPool: PortPool{Start: 4000, End: 4001}, Registry: "memory"}
+	cfg := Config{MaxClaims: 64, Registry: "memory"}
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
 	}

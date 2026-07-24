@@ -10,7 +10,6 @@ import (
 	"hash/fnv"
 	"log/slog"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,27 +18,26 @@ import (
 )
 
 type Redis struct {
-	client      *redis.Client
-	prefix      string
-	first, last int
-	allowed     []string
-	ttl         time.Duration
-	log         *slog.Logger
-	errMu       sync.RWMutex
-	lastErr     error
+	client  *redis.Client
+	prefix  string
+	max     int
+	allowed []string
+	ttl     time.Duration
+	log     *slog.Logger
+	errMu   sync.RWMutex
+	lastErr error
 }
 
-func NewRedis(client *redis.Client, prefix string, first, last int, allowed []string, ttl time.Duration, logger *slog.Logger) *Redis {
+func NewRedis(client *redis.Client, prefix string, maxClaims int, allowed []string, ttl time.Duration, logger *slog.Logger) *Redis {
 	if prefix == "" {
 		prefix = "tunlease"
 	}
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Redis{client: client, prefix: prefix, first: first, last: last, allowed: allowed, ttl: ttl, log: logger}
+	return &Redis{client: client, prefix: prefix, max: maxClaims, allowed: allowed, ttl: ttl, log: logger}
 }
 func (r *Redis) claimKey(id string) string { return r.prefix + ":claim:" + id }
-func (r *Redis) portKey(port int) string   { return r.prefix + ":port:" + strconv.Itoa(port) }
 func (r *Redis) idsKey() string            { return r.prefix + ":claims" }
 func (r *Redis) metaKey() string           { return r.prefix + ":claim-meta" }
 func (r *Redis) versionKey() string        { return r.prefix + ":version" }
@@ -145,27 +143,15 @@ func (r *Redis) Create(owner string, paths []string, local string) (Claim, error
 				}
 			}
 		}
-		port := 0
-		for x := r.first; x <= r.last; x++ {
-			n, err := r.client.Exists(ctx, r.portKey(x)).Result()
-			if err != nil {
-				return err
-			}
-			if n == 0 {
-				port = x
-				break
-			}
-		}
-		if port == 0 {
-			return &NoPorts{}
+		if len(claims) >= r.max {
+			return &TooManyClaims{}
 		}
 		b := make([]byte, 16)
 		_, _ = rand.Read(b)
-		result = Claim{ID: hex.EncodeToString(b), Owner: owner, Paths: append([]string(nil), paths...), Local: local, RemotePort: port, ExpiresAt: time.Now().Add(r.ttl).UTC()}
+		result = Claim{ID: hex.EncodeToString(b), Owner: owner, Paths: append([]string(nil), paths...), Local: local, ExpiresAt: time.Now().Add(r.ttl).UTC()}
 		payload, _ := json.Marshal(result)
 		p := r.client.TxPipeline()
 		p.Set(ctx, r.claimKey(result.ID), payload, r.ttl)
-		p.Set(ctx, r.portKey(port), result.ID, r.ttl)
 		p.SAdd(ctx, r.idsKey(), result.ID)
 		p.HSet(ctx, r.metaKey(), result.ID, payload)
 		p.Incr(ctx, r.versionKey())
@@ -197,7 +183,6 @@ func (r *Redis) Heartbeat(owner, id string) (time.Time, error) {
 		p := r.client.TxPipeline()
 		p.Set(ctx, r.claimKey(id), payload, r.ttl)
 		p.HSet(ctx, r.metaKey(), id, payload)
-		p.Expire(ctx, r.portKey(c.RemotePort), r.ttl)
 		p.Incr(ctx, r.versionKey())
 		_, err = p.Exec(ctx)
 		return err
@@ -223,7 +208,7 @@ func (r *Redis) Release(owner, id string, admin bool) error {
 		}
 		released = &c
 		p := r.client.TxPipeline()
-		p.Del(ctx, r.claimKey(id), r.portKey(c.RemotePort))
+		p.Del(ctx, r.claimKey(id))
 		p.SRem(ctx, r.idsKey(), id)
 		p.HDel(ctx, r.metaKey(), id)
 		p.Incr(ctx, r.versionKey())
@@ -259,14 +244,6 @@ func (r *Redis) LastError() error {
 	defer r.errMu.RUnlock()
 	return r.lastErr
 }
-func (r *Redis) OwnsPort(owner string, port int) bool {
-	for _, c := range r.List() {
-		if c.Owner == owner && c.RemotePort == port {
-			return true
-		}
-	}
-	return false
-}
 func (r *Redis) ReleaseByPath(owner, path string) error {
 	for _, c := range r.List() {
 		if c.Owner == owner {
@@ -293,7 +270,7 @@ func (r *Redis) Version() uint64 {
 	claims := r.List()
 	h := fnv.New64a()
 	for _, c := range claims {
-		_, _ = fmt.Fprintf(h, "%s|%s|%d|%d|", c.ID, c.Owner, c.RemotePort, c.ExpiresAt.UnixNano())
+		_, _ = fmt.Fprintf(h, "%s|%s|%d|", c.ID, c.Owner, c.ExpiresAt.UnixNano())
 		for _, p := range c.Paths {
 			_, _ = h.Write([]byte(p))
 			_, _ = h.Write([]byte{0})

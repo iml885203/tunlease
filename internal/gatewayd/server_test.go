@@ -16,7 +16,7 @@ type fakeClock struct{ now time.Time }
 
 func (f *fakeClock) Now() time.Time { return f.now }
 func testServer(clock registry.Clock) *Server {
-	m := registry.NewMemory(5000, 5002, []string{"/ok/"}, time.Minute, clock, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	m := registry.NewMemory(64, []string{"/ok/"}, time.Minute, clock, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	return &Server{Store: m, Tokens: map[string]Token{"a": {Owner: "alice"}, "b": {Owner: "bob"}}, TTL: time.Minute, Heartbeat: time.Second}
 }
 func request(s *Server, method, path, token string, body any) (int, map[string]any) {

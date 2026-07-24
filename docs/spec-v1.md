@@ -36,21 +36,21 @@ The developer needs no Kubernetes access. The CLI initiates a purpose-built reve
 
 | Endpoint | Purpose | Success | Main errors |
 |---|---|---|---|
-| `POST /api/v1/claims` | Claim paths. Body: `{"paths":["/api/callback/*"],"local":"localhost:5000"}` | `201` with `claim_id`, `owner`, `paths`, `remote_port`, `expires_at`, `ttl_seconds`, `heartbeat_seconds`, and `tunnel_fingerprint` | `409 path_claimed`, `403 path_not_allowed`, `401` |
+| `POST /api/v1/claims` | Claim paths. Body: `{"paths":["/api/callback/*"],"local":"localhost:5000"}` | `201` with `claim_id`, `owner`, `paths`, `expires_at`, `ttl_seconds`, `heartbeat_seconds`, and `tunnel_fingerprint` | `409 path_claimed`, `403 path_not_allowed`, `401`, `503 claim_limit_reached` |
 | `POST /api/v1/claims/{id}/heartbeat` | Renew a lease and refresh tunnel identity | `200` with `expires_at` and `tunnel_fingerprint` | `404 claim_expired`; the client must claim and establish a tunnel again |
 | `DELETE /api/v1/claims/{id}` | Idempotently release a lease | `204` | `401`; only its owner or an admin may release it |
 | `GET /api/v1/claims` | List active leases | `200` with `claims` | `401` |
 | `GET /api/v1/routes` | Sidecar route table with `ETag`/`If-None-Match` | `200` with `version` and routes, or `304` | May require a dedicated sidecar token |
 | `GET /healthz` | Liveness/readiness | `200` | — |
 
-A route contains `path_prefix`, `tunnel_addr`, `claim_id`, `owner`, and `expires_at`. The `local` field on a claim is informational; the CLI fixes the actual forwarding target to `127.0.0.1:<--to>`.
+A route contains `path_prefix`, `claim_id`, `owner`, and `expires_at`. The `local` field on a claim is informational; the CLI fixes the actual forwarding target to `127.0.0.1:<--to>`.
 
 ### 2.4 Tunnel establishment
 
-1. The client creates a claim and receives `remote_port`.
+1. The client creates a claim and receives its `claim_id` and `tunnel_fingerprint`.
 2. It connects to `wss://<host>/tunnel` with `X-Tunlease-Claim` and, when authentication is enabled, the bearer token. TLS 1.3 runs inside WebSocket and the client pins the certificate fingerprint returned by the claim response.
-3. The gateway must verify that the requested remote port belongs to a live lease owned by the current authenticated or anonymous identity.
-4. `tunnel_addr` is the gateway's `pod_ip:remote_port`; sidecars connect directly rather than through the Service. V1 therefore uses one gateway replica.
+3. The gateway must verify that the claim is active and owned by the current authenticated or anonymous identity.
+4. Third-party traffic arrives as HTTP on the gateway's single listener and is demultiplexed by path to the owning tunnel; there is no per-claim TCP port. V1 uses one gateway replica.
 5. The tunnel sends a 25-second yamux keepalive. Ingress read/send timeouts must be at least 3600 seconds.
 
 ### 2.5 Lease and path semantics

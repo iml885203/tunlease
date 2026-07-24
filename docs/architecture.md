@@ -78,7 +78,7 @@ sequenceDiagram
 
     Dev->>CLI: tunle claim --to 8080 /path/*
     CLI->>GW: POST /api/v1/claims
-    GW-->>CLI: claim ID, remote port, TTL, heartbeat
+    GW-->>CLI: claim ID, TTL, heartbeat, fingerprint
     CLI->>GW: Open reverse tunnel
     loop While the claim is active
         CLI->>GW: Heartbeat

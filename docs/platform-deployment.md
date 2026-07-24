@@ -148,7 +148,7 @@ kubectl -n tunlease rollout status deployment/tunlease
 
 The chart defaults to the `/tunlease` Ingress path and rewrites it to the gateway root. `/api/v1/*` and `/tunnel` share the same host and path. Do not strip WebSocket upgrade headers.
 
-Routes contain the gateway Pod IP in `tunnel_addr`, so v1 must keep `replicaCount: 1`. The Service carries API traffic and tunnel establishment, not sidecar traffic to allocated remote ports.
+Claim state lives in a single gateway process (or a shared Redis registry), and third-party traffic is demultiplexed by path over the established tunnels, so v1 must keep `replicaCount: 1` when using the in-memory registry.
 
 ## Add the sidecar
 

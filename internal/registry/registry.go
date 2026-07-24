@@ -30,9 +30,9 @@ type NotAllowed struct{ Path string }
 
 func (e *NotAllowed) Error() string { return "path not allowed" }
 
-type NoPorts struct{}
+type TooManyClaims struct{}
 
-func (*NoPorts) Error() string { return "no ports available" }
+func (*TooManyClaims) Error() string { return "claim limit reached" }
 
 type Clock interface{ Now() time.Time }
 type RealClock struct{}
@@ -40,19 +40,17 @@ type RealClock struct{}
 func (RealClock) Now() time.Time { return time.Now() }
 
 type Claim struct {
-	ID         string    `json:"claim_id"`
-	Owner      string    `json:"owner"`
-	Paths      []string  `json:"paths"`
-	Local      string    `json:"local,omitempty"`
-	RemotePort int       `json:"remote_port,omitempty"`
-	ExpiresAt  time.Time `json:"expires_at"`
+	ID        string    `json:"claim_id"`
+	Owner     string    `json:"owner"`
+	Paths     []string  `json:"paths"`
+	Local     string    `json:"local,omitempty"`
+	ExpiresAt time.Time `json:"expires_at"`
 }
 type Store interface {
 	Create(owner string, paths []string, local string) (Claim, error)
 	Heartbeat(owner, id string) (time.Time, error)
 	Release(owner, id string, admin bool) error
 	List() []Claim
-	OwnsPort(owner string, port int) bool
 	ReleaseByPath(owner, path string) error
 	ReleaseByLocalPort(owner string, port int) []Claim
 	Version() uint64
@@ -60,7 +58,7 @@ type Store interface {
 type Memory struct {
 	mu      sync.Mutex
 	claims  map[string]Claim
-	free    []int
+	max     int
 	allowed []string
 	ttl     time.Duration
 	clock   Clock
@@ -68,18 +66,14 @@ type Memory struct {
 	log     *slog.Logger
 }
 
-func NewMemory(first, last int, allowed []string, ttl time.Duration, clock Clock, logger *slog.Logger) *Memory {
-	free := make([]int, 0, last-first+1)
-	for p := first; p <= last; p++ {
-		free = append(free, p)
-	}
+func NewMemory(maxClaims int, allowed []string, ttl time.Duration, clock Clock, logger *slog.Logger) *Memory {
 	if clock == nil {
 		clock = RealClock{}
 	}
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Memory{claims: map[string]Claim{}, free: free, allowed: allowed, ttl: ttl, clock: clock, log: logger}
+	return &Memory{claims: map[string]Claim{}, max: maxClaims, allowed: allowed, ttl: ttl, clock: clock, log: logger}
 }
 func prefix(p string) string { return strings.TrimSuffix(p, "*") }
 func overlap(a, b string) bool {
@@ -90,8 +84,6 @@ func (m *Memory) expireLocked() {
 	for id, c := range m.claims {
 		if !c.ExpiresAt.After(now) {
 			delete(m.claims, id)
-			m.free = append(m.free, c.RemotePort)
-			sort.Ints(m.free)
 			m.version++
 			m.log.Info("lease audit", "event", "expire", "who", c.Owner, "when", now.UTC(), "paths", c.Paths, "claim_id", id)
 		}
@@ -124,15 +116,13 @@ func (m *Memory) Create(owner string, paths []string, local string) (Claim, erro
 			}
 		}
 	}
-	if len(m.free) == 0 {
-		return Claim{}, &NoPorts{}
+	if len(m.claims) >= m.max {
+		return Claim{}, &TooManyClaims{}
 	}
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
 	id := hex.EncodeToString(b)
-	port := m.free[0]
-	m.free = m.free[1:]
-	c := Claim{ID: id, Owner: owner, Paths: append([]string(nil), paths...), Local: local, RemotePort: port, ExpiresAt: m.clock.Now().Add(m.ttl).UTC()}
+	c := Claim{ID: id, Owner: owner, Paths: append([]string(nil), paths...), Local: local, ExpiresAt: m.clock.Now().Add(m.ttl).UTC()}
 	m.claims[id] = c
 	m.version++
 	m.log.Info("lease audit", "event", "claim", "who", owner, "when", m.clock.Now().UTC(), "paths", paths, "claim_id", id)
@@ -163,8 +153,6 @@ func (m *Memory) Release(owner, id string, admin bool) error {
 		return errors.New("forbidden")
 	}
 	delete(m.claims, id)
-	m.free = append(m.free, c.RemotePort)
-	sort.Ints(m.free)
 	m.version++
 	m.log.Info("lease audit", "event", "release", "who", owner, "when", m.clock.Now().UTC(), "paths", c.Paths, "claim_id", id)
 	return nil
@@ -179,14 +167,6 @@ func (m *Memory) List() []Claim {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
-}
-func (m *Memory) OwnsPort(owner string, port int) bool {
-	for _, c := range m.List() {
-		if c.Owner == owner && c.RemotePort == port {
-			return true
-		}
-	}
-	return false
 }
 func (m *Memory) ReleaseByPath(owner, path string) error {
 	for _, c := range m.List() {

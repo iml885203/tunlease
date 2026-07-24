@@ -34,7 +34,6 @@ type Claim struct {
 	ID          string    `json:"claim_id"`
 	Owner       string    `json:"owner"`
 	Paths       []string  `json:"paths"`
-	RemotePort  int       `json:"remote_port"`
 	ExpiresAt   time.Time `json:"expires_at"`
 	Heartbeat   int       `json:"heartbeat_seconds"`
 	Fingerprint string    `json:"tunnel_fingerprint,omitempty"`

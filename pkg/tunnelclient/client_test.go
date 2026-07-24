@@ -104,7 +104,7 @@ func TestStartNormalizesPathsAndReleasesWhenTunnelFails(t *testing.T) {
 			if len(in.Paths) == 1 {
 				createdPath = in.Paths[0]
 			}
-			_ = json.NewEncoder(w).Encode(Claim{ID: "claim-1", Paths: in.Paths, RemotePort: 20000, Fingerprint: "invalid"})
+			_ = json.NewEncoder(w).Encode(Claim{ID: "claim-1", Paths: in.Paths, Fingerprint: "invalid"})
 		case r.Method == http.MethodGet && r.URL.Path == "/tunnel":
 			http.Error(w, "not a websocket", http.StatusBadGateway)
 		case r.Method == http.MethodDelete && r.URL.Path == "/api/v1/claims/claim-1":
