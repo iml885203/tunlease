@@ -17,8 +17,10 @@ import (
 )
 
 type config struct {
-	Gateway string `yaml:"gateway"`
-	Token   string `yaml:"token"`
+	Gateway       string `yaml:"gateway"`
+	Token         string `yaml:"token"`
+	Insecure      bool   `yaml:"insecure"`
+	DefaultScheme string `yaml:"default_scheme"`
 }
 
 func NormalizePath(p string) (string, error) {
@@ -31,6 +33,7 @@ func NewCommand() *cobra.Command {
 
 func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 	var gateway, token string
+	var insecure bool
 	root := &cobra.Command{Use: "tunle", Short: "Claim a 3rd-party callback path and tunnel it to your machine", SilenceUsage: true, Version: fmt.Sprintf("%s (%s)", version, buildTime)}
 	// Client flags live on the client subcommands (claim/list/release), not on
 	// root, so the gateway and serve subcommands don't inherit an irrelevant
@@ -38,6 +41,7 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 	addClientFlags := func(c *cobra.Command) {
 		c.Flags().StringVar(&gateway, "gateway", "", "gateway base URL (env TUNLEASE_GATEWAY)")
 		c.Flags().StringVar(&token, "token", "", "API token (env TUNLEASE_TOKEN)")
+		c.Flags().BoolVar(&insecure, "insecure", false, "skip gateway TLS verification, e.g. a self-signed gateway (env TUNLEASE_INSECURE)")
 	}
 	get := func() (*tunnelclient.Client, error) {
 		c := loadConfig()
@@ -54,7 +58,12 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 		if c.Gateway == "" {
 			return nil, errors.New("gateway is required (flag, TUNLEASE_GATEWAY, or ~/.tunlease.yaml)")
 		}
-		return tunnelclient.New(tunnelclient.Config{Gateway: c.Gateway, Token: c.Token})
+		insec := insecure || c.Insecure || os.Getenv("TUNLEASE_INSECURE") != ""
+		scheme := c.DefaultScheme
+		if v := os.Getenv("TUNLEASE_DEFAULT_SCHEME"); v != "" {
+			scheme = v
+		}
+		return tunnelclient.New(tunnelclient.Config{Gateway: c.Gateway, Token: c.Token, Insecure: insec, DefaultScheme: scheme})
 	}
 
 	var to int

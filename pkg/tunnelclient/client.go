@@ -5,6 +5,7 @@ package tunnelclient
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,9 +18,18 @@ import (
 
 // Config configures a Client. HTTPClient is optional.
 type Config struct {
-	Gateway    string
-	Token      string
-	HTTPClient *http.Client
+	Gateway string
+	Token   string
+	// Insecure skips TLS certificate verification of the gateway connection
+	// (API + tunnel WebSocket). Useful for a gateway behind a self-signed
+	// certificate (self-hosted / internal). It does NOT weaken the tunnel's
+	// inner TLS, which is still pinned by fingerprint. Ignored when HTTPClient
+	// is provided.
+	Insecure bool
+	// DefaultScheme is used when Gateway has no scheme. Defaults to "https".
+	// Set to "http" for a gateway without TLS (e.g. a local demo).
+	DefaultScheme string
+	HTTPClient    *http.Client
 }
 
 // Client talks to a Tunlease gateway and opens reverse tunnels.
@@ -118,28 +128,43 @@ type Session struct {
 const DefaultControlPrefix = "/_tunlease"
 
 func New(cfg Config) (*Client, error) {
-	base, err := normalizeGateway(cfg.Gateway)
+	if cfg.DefaultScheme != "" && cfg.DefaultScheme != "http" && cfg.DefaultScheme != "https" {
+		return nil, errors.New("default scheme must be http or https")
+	}
+	base, err := normalizeGateway(cfg.Gateway, cfg.DefaultScheme)
 	if err != nil {
 		return nil, err
 	}
 	h := cfg.HTTPClient
 	if h == nil {
-		h = http.DefaultClient
+		if cfg.Insecure {
+			// Skip verification of the OUTER gateway TLS only (self-signed /
+			// internal gateway). The tunnel's inner TLS stays fingerprint-pinned.
+			h = &http.Client{Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // opt-in for self-signed gateways
+			}}
+		} else {
+			h = http.DefaultClient
+		}
 	}
 	return &Client{gateway: base, token: cfg.Token, http: h}, nil
 }
 
 // normalizeGateway turns user-friendly input into the control-plane base URL.
-// The scheme may be omitted (defaults to https), so `myapp.example.com` becomes
-// `https://myapp.example.com`. When only a host is given (no path), the default
-// control-plane prefix is appended, so the API/tunnel land under it. A user who
-// supplies an explicit path is trusted as-is (advanced / different-domain).
-func normalizeGateway(gateway string) (string, error) {
+// The scheme may be omitted; it defaults to defaultScheme (https unless
+// overridden), so `myapp.example.com` becomes `https://myapp.example.com`. When
+// only a host is given (no path), the default control-plane prefix is appended,
+// so the API/tunnel land under it. A user who supplies an explicit scheme or
+// path is trusted as-is (advanced / different-domain).
+func normalizeGateway(gateway, defaultScheme string) (string, error) {
 	if gateway == "" {
 		return "", errors.New("gateway is required")
 	}
+	if defaultScheme == "" {
+		defaultScheme = "https"
+	}
 	if !strings.Contains(gateway, "://") {
-		gateway = "https://" + gateway
+		gateway = defaultScheme + "://" + gateway
 	}
 	u, err := url.Parse(gateway)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {

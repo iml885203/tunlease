@@ -1,26 +1,47 @@
 #!/usr/bin/env bash
-# Record assets/demo.gif: start a local gateway + stand-in server, then run vhs
-# against assets/demo.tape (which shows only the `tunle claim` command).
+# Record assets/demo.gif. Sets up, off-camera:
+#   - a local stand-in dev server (the claimed path reaches this)
+#   - the tunle gateway on http://tunlease.demo (port 80), fail-open to the app
+# then runs vhs against assets/demo.tape (which shows only `tunle claim`).
 #
-# Requires: vhs (brew install vhs), python3, and a Go toolchain.
+# Precondition you set up ONCE:
+#   echo '127.0.0.1 tunlease.demo' | sudo tee -a /etc/hosts
+#
+# Run with ordinary permissions. Everything runs as you (so vhs is on PATH and
+# assets/demo.gif is owned by you) EXCEPT the gateway, which binds privileged
+# :80 under sudo (prompts once). The tape sets TUNLEASE_DEFAULT_SCHEME=http
+# off-camera so `--gateway tunlease.demo` resolves to http://tunlease.demo.
+#
+# Requires: vhs, python3, a Go toolchain.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-PORT_GATEWAY=8080
+DOMAIN=tunlease.demo
 PORT_LOCAL=3007
 TMP=$(mktemp -d)
 BIN="$TMP/bin"
 PIDS=()
-cleanup() { kill "${PIDS[@]}" 2>/dev/null || true; rm -rf "$TMP"; }
+GW_PID=""
+cleanup() {
+  kill "${PIDS[@]}" 2>/dev/null || true
+  # The gateway runs under sudo (binds :80), so kill it with sudo too.
+  [ -n "$GW_PID" ] && sudo kill "$GW_PID" 2>/dev/null || true
+  rm -rf "$TMP"
+}
 trap cleanup EXIT
 
-# Build `tunle` into a temp dir and put it on PATH for the recording.
+if ! grep -q "$DOMAIN" /etc/hosts 2>/dev/null; then
+  echo "WARNING: '$DOMAIN' not in /etc/hosts. Add it first:" >&2
+  echo "  echo '127.0.0.1 $DOMAIN' | sudo tee -a /etc/hosts" >&2
+fi
+
+# Build tunle onto PATH for the recording.
 mkdir -p "$BIN"
 go build -o "$BIN/tunle" ./cmd/tunlease
 export PATH="$BIN:$PATH"
 
 cat > "$TMP/demo.yaml" <<EOF
-listen: ":$PORT_GATEWAY"
+listen: ":80"
 advertise_host: "127.0.0.1"
 max_claims: 64
 ttl_seconds: 30
@@ -37,15 +58,19 @@ class H(BaseHTTPRequestHandler):
 HTTPServer(('127.0.0.1', $PORT_LOCAL), H).serve_forever()
 " & PIDS+=($!)
 
-# Single-process gateway+router in front of nothing in particular (demo only).
-tunle serve --config "$TMP/demo.yaml" --listen ":$PORT_GATEWAY" --app "http://127.0.0.1:$PORT_LOCAL" >/dev/null 2>&1 &
-PIDS+=($!)
+# The gateway binds privileged :80, so start ONLY it under sudo (prompts once).
+# It fails open to the stand-in app for unclaimed paths.
+echo "Starting the gateway on :80 (sudo — you may be prompted for your password)…"
+sudo "$BIN/tunle" serve --config "$TMP/demo.yaml" --listen ":80" --app "http://127.0.0.1:$PORT_LOCAL" >/dev/null 2>&1 &
+GW_PID=$!
+sleep 1
 
 for i in $(seq 1 20); do
-  curl -sf "http://127.0.0.1:$PORT_GATEWAY/healthz" >/dev/null && break
-  [ "$i" = 20 ] && { echo "gateway did not become healthy" >&2; exit 1; }
+  curl -sf "http://$DOMAIN/_tunlease/healthz" >/dev/null && break
+  [ "$i" = 20 ] && { echo "ERROR: http://$DOMAIN not reachable — gateway on :80 failed to start." >&2; exit 1; }
   sleep 0.3
 done
+echo "Gateway reachable at http://$DOMAIN — recording…"
 
 vhs assets/demo.tape
 echo "Recorded assets/demo.gif"
