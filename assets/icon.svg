@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Tunlease one-lane tunnel icon">
+  <rect width="512" height="512" rx="112" fill="#102A43"/>
+  <!-- The original road stays open and flows straight through. -->
+  <path d="M164 402V110" fill="none" stroke="#FFFFFF" stroke-width="48" stroke-linecap="round"/>
+  <path d="M164 76l-50 62h100z" fill="#FFFFFF"/>
+  <!-- A single leased lane peels away toward the tunnel. -->
+  <path d="M164 378c0-50 29-78 76-78h84" fill="none" stroke="#2DD4BF" stroke-width="48" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Tunnel mouth. -->
+  <path d="M268 326C268 193 305 144 368 144c57 0 100 49 100 112v146"
+        fill="none" stroke="#FFFFFF" stroke-width="48" stroke-linecap="round"/>
+  <!-- The leased path continues through the tunnel. -->
+  <path d="M368 380V218" fill="none" stroke="#2DD4BF" stroke-width="48" stroke-linecap="round"/>
+  <path d="M368 184l-50 62h100z" fill="#2DD4BF"/>
+</svg>

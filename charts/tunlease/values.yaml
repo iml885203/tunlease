@@ -1,0 +1,56 @@
+replicaCount: 1
+
+image:
+  repository: your-registry.example.com/tunlease-gateway
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  port: 80
+
+ingress:
+  enabled: true
+  className: nginx
+  host: tunlease.example.com
+  path: /tunlease
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/use-regex: "true"
+
+config:
+  listen: ":8300"
+  registry: memory
+  redisURL: ""
+  redisPrefix: tunlease
+  portPool:
+    start: 42000
+    end: 42063
+  ttlSeconds: 300
+  heartbeatSeconds: 30
+  # Path allowlist (opt-in): an empty list allows any path. The prefixes below
+  # are an example — set the ones that cover your callbacks, or clear the list
+  # on a trusted network. Restricting it stops anyone claiming paths like /admin.
+  whitelist:
+    - /webhooks/
+    - /integration/
+
+# Client authentication is disabled when tokens is empty. Configure tokens for
+# any gateway reachable outside a trusted development network.
+auth:
+  sidecarToken: change-me
+  tokens: []
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

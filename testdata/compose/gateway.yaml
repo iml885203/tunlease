@@ -1,0 +1,16 @@
+listen: ":8300"
+advertise_host: "gateway"
+registry: redis
+redis_url: "redis://redis:6379/0"
+redis_prefix: "tunlease-e2e"
+sidecar_token: "sidecar-test-token"
+port_pool:
+  start: 42000
+  end: 42007
+ttl_seconds: 8
+heartbeat_seconds: 2
+whitelist:
+  - /test/
+tokens:
+  - owner: e2e
+    token: "e2e-token"

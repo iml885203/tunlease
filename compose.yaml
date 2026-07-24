@@ -1,0 +1,47 @@
+services:
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 1s
+      retries: 20
+
+  gateway:
+    build:
+      context: .
+      target: gateway
+    command: ["--config", "/etc/tunlease/config.yaml"]
+    volumes:
+      - ./testdata/compose/gateway.yaml:/etc/tunlease/config.yaml:ro
+    ports:
+      - "18300:8300"
+      - "42000-42007:42000-42007"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  app:
+    build:
+      context: .
+      target: testapp
+
+  sidecar:
+    build:
+      context: .
+      target: sidecar
+    environment:
+      TUNLEASE_SIDECAR_LISTEN: ":8080"
+      TUNLEASE_APP_URL: "http://app:8081"
+      TUNLEASE_ROUTES_URL: "http://gateway:8300/api/v1/routes"
+      TUNLEASE_SIDECAR_TOKEN: "sidecar-test-token"
+      TUNLEASE_POLL_INTERVAL: "500ms"
+      TUNLEASE_MAX_STALE: "3s"
+      TUNLEASE_DIAL_TIMEOUT: "500ms"
+    ports:
+      - "28080:8080"
+      - "29090:9090"
+    depends_on:
+      - app
+      - gateway

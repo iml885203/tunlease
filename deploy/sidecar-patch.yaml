@@ -1,0 +1,24 @@
+# Strategic merge patch example. Replace workload/image/ports for the target app.
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          env:
+            - name: ASPNETCORE_URLS
+              value: "http://*:8081"
+        - name: tunlease-sidecar
+          image: your-registry.example.com/tunlease-sidecar:REPLACE_WITH_VERSION
+          ports:
+            - {name: http, containerPort: 8080}
+            - {name: metrics, containerPort: 9090}
+          env:
+            - {name: TUNLEASE_SIDECAR_LISTEN, value: ":8080"}
+            - {name: TUNLEASE_APP_URL, value: "http://127.0.0.1:8081"}
+            - {name: TUNLEASE_ROUTES_URL, value: "http://tunlease-gateway/api/v1/routes"}
+            - name: TUNLEASE_SIDECAR_TOKEN
+              valueFrom:
+                secretKeyRef: {name: tunlease-sidecar-auth, key: token}
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 100m, memory: 64Mi}

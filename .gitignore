@@ -1,0 +1,7 @@
+/bin/
+/dist/
+config.staging.yaml
+*.test
+.DS_Store
+.idea/
+.vscode/

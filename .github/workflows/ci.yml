@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  pull_request:
+    branches: [master]
+
+# Image registry is configurable via repository/organization variables:
+#   vars.REGISTRY  e.g. ghcr.io/<owner>  or  your-registry.example.com/<project>
+# Push credentials come from secrets (defaults suit GitHub Container Registry):
+#   secrets.REGISTRY_USERNAME / secrets.REGISTRY_PASSWORD
+# When REGISTRY is unset the image build still runs but the push is skipped,
+# so forks get a working pipeline with no secrets configured.
+env:
+  REGISTRY: ${{ vars.REGISTRY }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - run: go vet ./...
+      - run: go build ./...
+      - run: go test -race ./...
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.12.2
+
+  # Multi-arch (amd64+arm64) so images run on either node type. Go cross-compiles
+  # natively via the Dockerfile's TARGETOS/TARGETARCH. Multi-arch manifests can't
+  # be loaded locally, so we build --push directly. Both gateway and sidecar are
+  # built from this repo's single Dockerfile, differing only by --target.
+  images:
+    runs-on: ubuntu-latest
+    needs: [test, lint]
+    if: github.event_name == 'push' && vars.REGISTRY != ''
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - target: gateway
+            name: tunlease-gateway
+          - target: sidecar
+            name: tunlease-sidecar
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.REGISTRY_HOST || 'ghcr.io' }}
+          username: ${{ secrets.REGISTRY_USERNAME || github.actor }}
+          password: ${{ secrets.REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: ${{ matrix.target }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ matrix.name }}:${{ github.sha }}
+
+  # Cross-compile the CLI for every supported platform and attach the binaries
+  # (plus checksums) to the GitHub Release when a tag is pushed.
+  release-cli:
+    runs-on: ubuntu-latest
+    needs: [test, lint]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - name: Build release binaries
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          for PAIR in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+            OS=${PAIR%/*}; ARCH=${PAIR#*/}; NAME="tunlease-${OS}-${ARCH}"
+            [ "$OS" = "windows" ] && NAME="${NAME}.exe"
+            GOOS=$OS GOARCH=$ARCH CGO_ENABLED=0 go build \
+              -ldflags "-s -w -X 'main.version=${VERSION}' -X 'main.buildTime=${BUILD_TIME}'" \
+              -o "$NAME" ./cmd/cli
+            sha256sum "$NAME" > "${NAME}.sha256"
+          done
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            tunlease-linux-*
+            tunlease-darwin-*
+            tunlease-windows-*
