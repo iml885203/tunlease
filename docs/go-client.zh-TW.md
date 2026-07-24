@@ -2,7 +2,7 @@
 
 [English](go-client.md) · [繁體中文](go-client.zh-TW.md)
 
-`tunnelclient` package 讓 Go 應用程式直接管理 Tunlease session。它與獨立 CLI 共用 claim、lease heartbeat、重新連線、TLS pinning WebSocket 與反向 tunnel engine。最後仍是一個 application binary，使用者不需要另外安裝 `tunlease` CLI。
+`tunnelclient` package 讓 Go 應用程式直接管理 Tunlease session。它與獨立 CLI 共用 claim、lease heartbeat、重新連線、TLS pinning WebSocket 與反向 tunnel engine。最後仍是一個 application binary，使用者不需要另外安裝 `tunle` CLI。
 
 ## 加入 dependency
 

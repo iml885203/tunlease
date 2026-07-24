@@ -24,7 +24,7 @@ flowchart LR
     end
 
     subgraph Developer[開發者電腦]
-        CLI[tunlease CLI]
+        CLI[tunle CLI]
         LocalApp[本機服務]
     end
 
@@ -71,12 +71,12 @@ Sidecar 使用 longest-prefix matching。Route table 超過最大 stale 時間�
 ```mermaid
 sequenceDiagram
     participant Dev as 開發者
-    participant CLI as tunlease CLI
+    participant CLI as tunle CLI
     participant GW as tunlease-gateway
     participant SC as tunlease-sidecar
     participant Local as 本機服務
 
-    Dev->>CLI: tunlease claim --to 8080 /path/*
+    Dev->>CLI: tunle claim --to 8080 /path/*
     CLI->>GW: POST /api/v1/claims
     GW-->>CLI: claim ID、remote port、TTL、heartbeat、fingerprint
     CLI->>GW: 開啟反向 tunnel

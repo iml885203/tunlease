@@ -22,8 +22,8 @@ verify() {
 
 main() {
   local p name dir target tmp sums
-  p=$(platform); name="tunlease-$p"; [[ "$p" == windows-* ]] && name="$name.exe"
-  dir="${TUNLEASE_INSTALL_DIR:-$HOME/.local/bin}"; mkdir -p "$dir"; target="$dir/tunlease"; [[ "$p" == windows-* ]] && target="$target.exe"
+  p=$(platform); name="tunle-$p"; [[ "$p" == windows-* ]] && name="$name.exe"
+  dir="${TUNLEASE_INSTALL_DIR:-$HOME/.local/bin}"; mkdir -p "$dir"; target="$dir/tunle"; [[ "$p" == windows-* ]] && target="$target.exe"
   tmp=$(mktemp); sums=$(mktemp); TMP=$tmp; SUMS=$sums
   curl -fsSL "$BASE_URL/$name" -o "$tmp"; curl -fsSL "$BASE_URL/$name.sha256" -o "$sums"; verify "$tmp" "$sums"; chmod +x "$tmp"
   [ ! -f "$target" ] || cp -p "$target" "$target.prev"

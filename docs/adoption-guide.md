@@ -78,7 +78,7 @@ sidecar configuration must match.
 
 ## 5. Developers claim paths
 
-- [ ] Choose the [`tunlease` CLI](developer-guide.md), or embed
+- [ ] Choose the [`tunle` CLI](developer-guide.md), or embed
   [`pkg/tunnelclient`](go-client.md) directly in a Go application.
 
 Both options create and maintain the same claim, lease, heartbeat, and reverse
@@ -87,7 +87,7 @@ approved path.
 
 ## 6. Verify end-to-end
 
-- [ ] Claim a test path and confirm it appears in `tunlease list`.
+- [ ] Claim a test path and confirm it appears in `tunle list`.
 - [ ] Call that path through the fixed third-party-facing URL and confirm the
   request reaches localhost.
 - [ ] Release the claim, then confirm the path returns to the original

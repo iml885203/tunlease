@@ -17,24 +17,24 @@ CLI 不會自動建立或搜尋 token。Gateway 使用預設的無認證設定�
 ```bash
 # macOS 與 Linux
 curl -fsSL https://tunlease.example.com/install/install.sh | bash
-tunlease --version
+tunle --version
 ```
 
 ```powershell
 # Windows PowerShell（amd64）
 irm https://tunlease.example.com/install/install.ps1 | iex
-tunlease --version
+tunle --version
 ```
 
-macOS/Linux installer 會偵測 OS 與 amd64/arm64，安裝到 `~/.local/bin/tunlease`，驗證 SHA-256，並把上一版保留為 `.prev`。
+macOS/Linux installer 會偵測 OS 與 amd64/arm64，安裝到 `~/.local/bin/tunle`，驗證 SHA-256，並把上一版保留為 `.prev`。
 
-Windows installer 會下載原生 amd64 executable 到 `%LOCALAPPDATA%\tunlease`、驗證 SHA-256、把上一版保留為 `tunlease.exe.prev`，並將目錄加入 user `PATH`。專用 tunnel transport 已通過公司 endpoint-security 落地與執行檢查。
+Windows installer 會下載原生 amd64 executable 到 `%LOCALAPPDATA%\tunlease`、驗證 SHA-256、把上一版保留為 `tunle.exe.prev`，並將目錄加入 user `PATH`。tunnel transport 是 Tunlease 專用的。
 
 ```bash
-tunlease update
+tunle update
 ```
 
-`tunlease update` 會驗證 checksum 並保留前一版。Windows 請重新執行 PowerShell installer 更新。
+`tunle update` 會驗證 checksum 並保留前一版。Windows 請重新執行 PowerShell installer 更新。
 
 ## 設定
 
@@ -73,7 +73,7 @@ token: YOUR_PERSONAL_TOKEN
 
 ```bash
 # 服務已在 localhost:8080 listening。
-tunlease claim --to 8080 /webhooks/provider/callback/*
+tunle claim --to 8080 /webhooks/provider/callback/*
 ```
 
 - Path 必須以 `/` 開頭；CLI 會正規化成以 `/*` 結尾的 prefix pattern。
@@ -85,7 +85,7 @@ tunlease claim --to 8080 /webhooks/provider/callback/*
 多個 path 可以共用同一個 local port：
 
 ```bash
-tunlease claim --to 8080 \
+tunle claim --to 8080 \
   /webhooks/provider/debit/* \
   /webhooks/provider/credit/*
 ```
@@ -93,10 +93,10 @@ tunlease claim --to 8080 \
 ## 查看與釋放
 
 ```bash
-tunlease list
-tunlease list --all
-tunlease release /webhooks/provider/callback/*
-tunlease release --to 8080
+tunle list
+tunle list --all
+tunle release /webhooks/provider/callback/*
+tunle release --to 8080
 ```
 
 本機 claim metadata 存在 `~/.tunlease/state.json`，其中沒有 token。即使檔案遺失，`release PATH` 仍可查詢 server 並釋放目前 identity 擁有的租約。
@@ -113,10 +113,10 @@ tunlease release --to 8080
 : Path 不在平台 allowlist；請改用核准的 provider prefix，或請維護者調整 allowlist。
 
 `path already claimed`
-: Path 與現有租約重疊。執行 `tunlease list --all` 查看 owner 與到期時間，不要接管其他開發者的測試。
+: Path 與現有租約重疊。執行 `tunle list --all` 查看 owner 與到期時間，不要接管其他開發者的測試。
 
 Callback 仍然進到 staging app
-: 確認 `claim` process 還在、local port 正確、本機服務有回應，而且 `tunlease list` 看得到租約。Tunnel 無法連線時 sidecar 會刻意 fail-open 回原始 app。
+: 確認 `claim` process 還在、local port 正確、本機服務有回應，而且 `tunle list` 看得到租約。Tunnel 無法連線時 sidecar 會刻意 fail-open 回原始 app。
 
 使用其他 release URL
-: 設定 `TUNLEASE_BASE_URL`，或在 `tunlease update` 加上 `--base-url`。
+: 設定 `TUNLEASE_BASE_URL`，或在 `tunle update` 加上 `--base-url`。

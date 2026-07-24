@@ -2,7 +2,7 @@
 
 [English](go-client.md) · [繁體中文](go-client.zh-TW.md)
 
-The `tunnelclient` package lets a Go application own Tunlease sessions directly. It contains the same claim, lease heartbeat, reconnect, TLS-pinned WebSocket, and reverse-tunnel engine as the standalone CLI. The final application is one binary; its users do not install the `tunlease` CLI.
+The `tunnelclient` package lets a Go application own Tunlease sessions directly. It contains the same claim, lease heartbeat, reconnect, TLS-pinned WebSocket, and reverse-tunnel engine as the standalone CLI. The final application is one binary; its users do not install the `tunle` CLI.
 
 ## Add the dependency
 

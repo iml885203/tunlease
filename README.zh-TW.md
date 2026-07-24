@@ -2,7 +2,7 @@
 
 把第三方固定 endpoint 的特定 path，暫時轉送到開發者本機；第三方不需要更換 URL。
 
-![claim 前固定 callback URL 回 app 的 404，`tunlease claim` 後同一 URL 打到本機服務](assets/demo.gif)
+![claim 前固定 callback URL 回 app 的 404，`tunle claim` 後同一 URL 打到本機服務](assets/demo.gif)
 
 [開發者快速上手](#開發者快速上手) · [平台部署](docs/platform-deployment.zh-TW.md) · [架構](docs/architecture.zh-TW.md) · [疑難排解](docs/developer-guide.zh-TW.md#疑難排解)
 
@@ -19,7 +19,7 @@ flowchart LR
     end
 
     subgraph Laptop[開發者電腦]
-        CLI[tunlease CLI] -->|"5. 轉送到 localhost"| Local[本機服務]
+        CLI[tunle CLI] -->|"5. 轉送到 localhost"| Local[本機服務]
     end
 
     Gateway ==>|"4. 已建立的反向 tunnel"| CLI
@@ -73,7 +73,7 @@ irm https://tunlease.example.com/install/install.ps1 | iex
 port。Ctrl+C 釋放租約。
 
 ```bash
-tunlease claim /webhooks/provider/callback/* --to 8080 --gateway https://tunlease.example.com
+tunle claim /webhooks/provider/callback/* --to 8080 --gateway https://tunlease.example.com
 ```
 
 Claim 之後真正的 staging 第三方 callback 會進到你的本機，所以請先啟動本機服務、
@@ -83,7 +83,7 @@ Claim 之後真正的 staging 第三方 callback 會進到你的本機，所以�
 
 ```bash
 export TUNLEASE_GATEWAY=https://tunlease.example.com
-tunlease claim /webhooks/provider/callback/* --to 8080
+tunle claim /webhooks/provider/callback/* --to 8080
 ```
 
 或者，若偏好用檔案，放進 `~/.tunlease.yaml`（gateway 需要認證時，`token:` 也寫這裡）：
@@ -95,42 +95,42 @@ gateway: https://tunlease.example.com
 其餘指令都用同樣的簡短形式：
 
 ```bash
-tunlease list                                    # 你目前的 claim
-tunlease list --all                              # gateway 上所有 claim
-tunlease release /webhooks/provider/callback/*   # 釋放某個 path
-tunlease release --to 8080                        # 釋放某個 port 上的全部
-tunlease update                                  # 自我更新 binary
-tunlease --version
+tunle list                                    # 你目前的 claim
+tunle list --all                              # gateway 上所有 claim
+tunle release /webhooks/provider/callback/*   # 釋放某個 path
+tunle release --to 8080                        # 釋放某個 port 上的全部
+tunle update                                  # 自我更新 binary
+tunle --version
 ```
 
 完整用法與問題排查請看[開發者指南](docs/developer-guide.zh-TW.md)。
 
-Windows amd64 使用 Tunlease 專用的 tunnel transport，已通過公司裝置上的 endpoint-security 落地與執行檢查。PowerShell installer 會驗證發布的 SHA-256 checksum，並把上一版保留為 `tunlease.exe.prev`。
+Windows amd64 使用 Tunlease 專用的 tunnel transport。PowerShell installer 會驗證發布的 SHA-256 checksum，並把上一版保留為 `tunle.exe.prev`。
 
 ## 元件與部署模型
 
-全部都是同一個 `tunlease` binary，用 subcommand 切換角色：
+全部都是同一個 `tunle` binary，用 subcommand 切換角色：
 
 | 命令 | 執行於 | 職責 |
 |---|---|---|
-| `tunlease claim`（及 `list` / `release`） | 開發者電腦 | Claim 一條 path、持有租約、反向 tunnel、heartbeat |
-| `tunlease gateway` | 共用環境 | API、租約 registry 與反向 tunnel server |
-| `tunlease sidecar` | 固定 endpoint workload | 依 path 分流；任何失敗都回到原始 app |
-| `tunlease serve` | 單機、前置單一 app | Gateway **與** router 同一個 process |
+| `tunle claim`（及 `list` / `release`） | 開發者電腦 | Claim 一條 path、持有租約、反向 tunnel、heartbeat |
+| `tunle gateway` | 共用環境 | API、租約 registry 與反向 tunnel server |
+| `tunle sidecar` | 固定 endpoint workload | 依 path 分流；任何失敗都回到原始 app |
+| `tunle serve` | 單機、前置單一 app | Gateway **與** router 同一個 process |
 
 Server 端有兩種跑法：
 
-- **單機、單一 app** — 跑 `tunlease serve --app http://localhost:3000`。一個 process
+- **單機、單一 app** — 跑 `tunle serve --app http://localhost:3000`。一個 process
   前置該 app：被 claim 的 path tunnel 給開發者，其餘一律 fail-open 回 app。不需要
   gateway/sidecar 拆分，也不需要 Kubernetes。
-- **共用平台、多個 app** — 跑一次 `tunlease gateway`，再在每個固定 endpoint 的
-  workload 旁加 `tunlease sidecar`。這是 Helm chart 與 sidecar patch 部署的模型。
+- **共用平台、多個 app** — 跑一次 `tunle gateway`，再在每個固定 endpoint 的
+  workload 旁加 `tunle sidecar`。這是 Helm chart 與 sidecar patch 部署的模型。
 
 這些都不會呼叫 Kubernetes API，因此 Kubernetes 不是必要條件——它只是多-app 模型的建議部署目標。
 
 ## 嵌入 tunnel client
 
-Go 應用程式可以直接嵌入獨立 CLI 使用的同一套 claim、lease、重新連線與 tunnel engine，應用程式的使用者不需要另外安裝 `tunlease` binary。
+Go 應用程式可以直接嵌入獨立 CLI 使用的同一套 claim、lease、重新連線與 tunnel engine，應用程式的使用者不需要另外安裝 `tunle` binary。
 
 ```bash
 go get github.com/iml885203/tunlease/pkg/tunnelclient@latest

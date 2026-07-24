@@ -193,7 +193,7 @@ kubectl -n tunlease get pods
 kubectl -n tunlease logs deployment/TARGET -c tunlease-sidecar --since=10m
 ```
 
-完整 E2E：先確認未認領 path 到 app；執行 `tunlease claim` 後確認 public URL 到 localhost；Ctrl+C 後確認回到 app；最後中斷 tunnel 或 gateway，確認仍然 fail-open。
+完整 E2E：先確認未認領 path 到 app；執行 `tunle claim` 後確認 public URL 到 localhost；Ctrl+C 後確認回到 app；最後中斷 tunnel 或 gateway，確認仍然 fail-open。
 
 ## Observability
 

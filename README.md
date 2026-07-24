@@ -19,7 +19,7 @@ flowchart LR
     end
 
     subgraph Laptop[Developer machine]
-        CLI[tunlease CLI] -->|"5. Forwards to localhost"| Local[Local service]
+        CLI[tunle CLI] -->|"5. Forwards to localhost"| Local[Local service]
     end
 
     Gateway ==>|"4. Existing reverse tunnel"| CLI
@@ -76,7 +76,7 @@ Then claim a path in one command — point it at the gateway with `--gateway`
 and forward the path to a local port with `--to`. Ctrl+C releases it.
 
 ```bash
-tunlease claim /webhooks/provider/callback/* --to 8080 --gateway https://tunlease.example.com
+tunle claim /webhooks/provider/callback/* --to 8080 --gateway https://tunlease.example.com
 ```
 
 Claims receive real staging callbacks, so start your local service first and
@@ -86,7 +86,7 @@ To avoid repeating `--gateway`, set it once as an environment variable:
 
 ```bash
 export TUNLEASE_GATEWAY=https://tunlease.example.com
-tunlease claim /webhooks/provider/callback/* --to 8080
+tunle claim /webhooks/provider/callback/* --to 8080
 ```
 
 Or, if you prefer a file, put it in `~/.tunlease.yaml` (a `token:` line goes
@@ -99,36 +99,36 @@ gateway: https://tunlease.example.com
 Everything else uses the same short form:
 
 ```bash
-tunlease list                                    # your active claims
-tunlease list --all                              # every claim on the gateway
-tunlease release /webhooks/provider/callback/*   # release a path
-tunlease release --to 8080                        # release everything on a port
-tunlease update                                  # self-update the binary
-tunlease --version
+tunle list                                    # your active claims
+tunle list --all                              # every claim on the gateway
+tunle release /webhooks/provider/callback/*   # release a path
+tunle release --to 8080                        # release everything on a port
+tunle update                                  # self-update the binary
+tunle --version
 ```
 
 See the [developer guide](docs/developer-guide.md) for full usage and troubleshooting.
 
-Windows amd64 uses Tunlease's purpose-built tunnel transport. The PowerShell installer verifies the published SHA-256 checksum and preserves the previous executable as `tunlease.exe.prev`.
+Windows amd64 uses Tunlease's purpose-built tunnel transport. The PowerShell installer verifies the published SHA-256 checksum and preserves the previous executable as `tunle.exe.prev`.
 
 ## Components and deployment model
 
-It is all one `tunlease` binary; a subcommand selects the role:
+It is all one `tunle` binary; a subcommand selects the role:
 
 | Command | Runs on | Responsibility |
 |---|---|---|
-| `tunlease claim` (also `list` / `release`) | Developer machine | Claim a path, hold the lease, reverse tunnel, heartbeat |
-| `tunlease gateway` | Shared environment | API, lease registry, and reverse-tunnel server |
-| `tunlease sidecar` | Fixed-endpoint workload | Path routing; falls back to the original app on any failure |
-| `tunlease serve` | Single host in front of one app | Gateway **and** router in one process |
+| `tunle claim` (also `list` / `release`) | Developer machine | Claim a path, hold the lease, reverse tunnel, heartbeat |
+| `tunle gateway` | Shared environment | API, lease registry, and reverse-tunnel server |
+| `tunle sidecar` | Fixed-endpoint workload | Path routing; falls back to the original app on any failure |
+| `tunle serve` | Single host in front of one app | Gateway **and** router in one process |
 
 There are two ways to run the server side:
 
-- **Single host, one app** — run `tunlease serve --app http://localhost:3000`. One
+- **Single host, one app** — run `tunle serve --app http://localhost:3000`. One
   process fronts the app: claimed paths tunnel to a developer, everything else
   fails open to the app. No gateway/sidecar split, no Kubernetes.
-- **Shared platform, many apps** — run `tunlease gateway` once, and add
-  `tunlease sidecar` beside each fixed-endpoint workload. This is the model the
+- **Shared platform, many apps** — run `tunle gateway` once, and add
+  `tunle sidecar` beside each fixed-endpoint workload. This is the model the
   Helm chart and sidecar patch deploy.
 
 None of these call the Kubernetes API, so Kubernetes is not required — it is
@@ -136,7 +136,7 @@ just the recommended target for the multi-app model.
 
 ## Embedding the tunnel client
 
-Go applications can embed the same claim, lease, reconnect, and tunnel engine used by the standalone CLI. Their users do not need the `tunlease` binary.
+Go applications can embed the same claim, lease, reconnect, and tunnel engine used by the standalone CLI. Their users do not need the `tunle` binary.
 
 ```bash
 go get github.com/iml885203/tunlease/pkg/tunnelclient@latest

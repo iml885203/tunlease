@@ -24,7 +24,7 @@ flowchart LR
     end
 
     subgraph Developer[Developer machine]
-        CLI[tunlease CLI]
+        CLI[tunle CLI]
         LocalApp[Local service]
     end
 
@@ -71,12 +71,12 @@ The sidecar uses longest-prefix matching. If the route table is unavailable for 
 ```mermaid
 sequenceDiagram
     participant Dev as Developer
-    participant CLI as tunlease CLI
+    participant CLI as tunle CLI
     participant GW as tunlease-gateway
     participant SC as tunlease-sidecar
     participant Local as Local service
 
-    Dev->>CLI: tunlease claim --to 8080 /path/*
+    Dev->>CLI: tunle claim --to 8080 /path/*
     CLI->>GW: POST /api/v1/claims
     GW-->>CLI: claim ID, remote port, TTL, heartbeat
     CLI->>GW: Open reverse tunnel

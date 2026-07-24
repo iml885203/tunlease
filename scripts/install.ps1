@@ -7,8 +7,8 @@ if (-not [Environment]::Is64BitOperatingSystem) {
     throw "tunlease requires 64-bit Windows"
 }
 
-$Name = "tunlease-windows-amd64.exe"
-$Temp = Join-Path ([IO.Path]::GetTempPath()) ("tunlease-" + [Guid]::NewGuid().ToString("N") + ".exe")
+$Name = "tunle-windows-amd64.exe"
+$Temp = Join-Path ([IO.Path]::GetTempPath()) ("tunle-" + [Guid]::NewGuid().ToString("N") + ".exe")
 $ChecksumTemp = $Temp + ".sha256"
 
 try {

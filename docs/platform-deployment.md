@@ -205,7 +205,7 @@ kubectl -n tunlease get pods
 kubectl -n tunlease logs deployment/TARGET -c tunlease-sidecar --since=10m
 ```
 
-For an end-to-end check: verify an unclaimed path reaches the app, run `tunlease claim` and verify it reaches localhost, then press Ctrl+C and verify it returns to the app. Finally interrupt the tunnel or gateway and confirm requests still fail open.
+For an end-to-end check: verify an unclaimed path reaches the app, run `tunle claim` and verify it reaches localhost, then press Ctrl+C and verify it returns to the app. Finally interrupt the tunnel or gateway and confirm requests still fail open.
 
 ## Observability
 

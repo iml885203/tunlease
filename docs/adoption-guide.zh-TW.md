@@ -70,7 +70,7 @@ Gateway 與 sidecar config 中的 `sidecar_token` 必須相同。
 
 ## 5. 開發者認領 path
 
-- [ ] 選擇使用 [`tunlease` CLI](developer-guide.zh-TW.md)，或在 Go
+- [ ] 選擇使用 [`tunle` CLI](developer-guide.zh-TW.md)，或在 Go
   應用程式直接嵌入 [`pkg/tunnelclient`](go-client.zh-TW.md)。
 
 兩種方式都會建立並維持相同的 claim、lease、heartbeat 與反向 tunnel
@@ -78,6 +78,6 @@ lifecycle。請先啟動本機服務，再認領核准範圍內最小的 path。
 
 ## 6. 驗證完整流程
 
-- [ ] 認領測試 path，確認 `tunlease list` 看得到它。
+- [ ] 認領測試 path，確認 `tunle list` 看得到它。
 - [ ] 透過第三方看到的固定 URL 呼叫該 path，確認 request 到達 localhost。
 - [ ] Release claim，再確認該 path 回到原始 app。

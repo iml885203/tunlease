@@ -17,25 +17,25 @@ The CLI does not create or discover personal tokens. With the default unauthenti
 ```bash
 # macOS and Linux
 curl -fsSL https://tunlease.example.com/install/install.sh | bash
-tunlease --version
+tunle --version
 ```
 
 ```powershell
 # Windows PowerShell (amd64)
 irm https://tunlease.example.com/install/install.ps1 | iex
-tunlease --version
+tunle --version
 ```
 
-The installer detects macOS/Linux and amd64/arm64 and installs to `~/.local/bin/tunlease`. It verifies SHA-256 and preserves the previous binary as `.prev`.
+The installer detects macOS/Linux and amd64/arm64 and installs to `~/.local/bin/tunle`. It verifies SHA-256 and preserves the previous binary as `.prev`.
 
-The Windows installer downloads the native amd64 executable to `%LOCALAPPDATA%\tunlease`, verifies SHA-256, preserves the previous binary as `tunlease.exe.prev`, and adds the directory to the user `PATH`. The purpose-built tunnel transport has passed an on-device endpoint-security landing and execution check.
+The Windows installer downloads the native amd64 executable to `%LOCALAPPDATA%\tunlease`, verifies SHA-256, preserves the previous binary as `tunle.exe.prev`, and adds the directory to the user `PATH`. The purpose-built tunnel transport is Tunlease's own.
 
 ```bash
-tunlease update
+tunle update
 ```
 
-Updates verify the checksum and preserve the previous version as `tunlease.prev`.
-On Windows, rerun the PowerShell installer to update while preserving `tunlease.exe.prev`.
+Updates verify the checksum and preserve the previous version as `tunle.prev`.
+On Windows, rerun the PowerShell installer to update while preserving `tunle.exe.prev`.
 
 ## Configure
 
@@ -74,7 +74,7 @@ Start the local service, then claim the narrowest useful path:
 
 ```bash
 # A service is already listening on localhost:8080.
-tunlease claim --to 8080 /webhooks/provider/callback/*
+tunle claim --to 8080 /webhooks/provider/callback/*
 ```
 
 - Paths must begin with `/`. The CLI normalizes them to prefix patterns ending in `/*`.
@@ -86,7 +86,7 @@ tunlease claim --to 8080 /webhooks/provider/callback/*
 Multiple paths can share one local port:
 
 ```bash
-tunlease claim --to 8080 \
+tunle claim --to 8080 \
   /webhooks/provider/debit/* \
   /webhooks/provider/credit/*
 ```
@@ -94,10 +94,10 @@ tunlease claim --to 8080 \
 ## Inspect and release
 
 ```bash
-tunlease list
-tunlease list --all
-tunlease release /webhooks/provider/callback/*
-tunlease release --to 8080
+tunle list
+tunle list --all
+tunle release /webhooks/provider/callback/*
+tunle release --to 8080
 ```
 
 Local claim metadata is stored in `~/.tunlease/state.json`; it does not contain the token. If that file is lost, `release PATH` can still query the server and release a lease owned by the current identity.
@@ -114,10 +114,10 @@ Local claim metadata is stored in `~/.tunlease/state.json`; it does not contain 
 : The path is outside the platform allowlist. Use an allowed provider prefix or ask a maintainer to update the allowlist.
 
 `path already claimed`
-: The path overlaps another active lease. Run `tunlease list --all` to see its owner and expiry; do not take over another developer's test.
+: The path overlaps another active lease. Run `tunle list --all` to see its owner and expiry; do not take over another developer's test.
 
 Callbacks still reach the staging app
-: Confirm that the `claim` process is running, the local port is correct, the local service responds, and `tunlease list` shows the lease. The sidecar intentionally fails open to the original app when the tunnel cannot be reached.
+: Confirm that the `claim` process is running, the local port is correct, the local service responds, and `tunle list` shows the lease. The sidecar intentionally fails open to the original app when the tunnel cannot be reached.
 
 Use another release URL
-: Set `TUNLEASE_BASE_URL`, or pass `--base-url` to `tunlease update`.
+: Set `TUNLEASE_BASE_URL`, or pass `--base-url` to `tunle update`.
