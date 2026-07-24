@@ -1,12 +1,12 @@
 package tunnelclient_test
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
@@ -19,12 +19,12 @@ import (
 )
 
 func TestAnonymousSessionDataPathAndClose(t *testing.T) {
-	local, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = local.Close() }()
-	go serveOneLine(local)
+	// Local HTTP server the claimed path should reach through the tunnel.
+	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "received: %s", r.URL.Path)
+	}))
+	defer local.Close()
+	localPort := mustPort(t, local.URL)
 
 	remotePort := reservePort(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -50,7 +50,7 @@ func TestAnonymousSessionDataPathAndClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	session, err := client.Start(ctx, []string{"/test/anonymous"}, local.Addr().(*net.TCPAddr).Port)
+	session, err := client.Start(ctx, []string{"/test/anonymous/*"}, localPort)
 	if err != nil {
 		cancel()
 		t.Fatal(err)
@@ -59,20 +59,11 @@ func TestAnonymousSessionDataPathAndClose(t *testing.T) {
 		t.Fatalf("owner = %q", got)
 	}
 
-	remote, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(session.Claim().RemotePort)), 2*time.Second)
-	if err != nil {
-		cancel()
-		_ = session.Close()
-		t.Fatal(err)
-	}
-	_ = remote.SetDeadline(time.Now().Add(2 * time.Second))
-	if _, err = fmt.Fprintln(remote, "ping"); err != nil {
-		t.Fatal(err)
-	}
-	reply, err := bufio.NewReader(remote).ReadString('\n')
-	_ = remote.Close()
-	if err != nil || reply != "received: ping\n" {
-		t.Fatalf("reply = %q, %v", reply, err)
+	// Third-party traffic enters as HTTP on the gateway; the claimed path must
+	// reach the local server through the tunnel.
+	body := getThroughTunnel(t, httpServer, "/test/anonymous/hook")
+	if body != "received: /test/anonymous/hook" {
+		t.Fatalf("tunnelled body = %q", body)
 	}
 
 	cancel()
@@ -82,6 +73,39 @@ func TestAnonymousSessionDataPathAndClose(t *testing.T) {
 	if len(store.List()) != 0 {
 		t.Fatalf("claim remains after Close: %#v", store.List())
 	}
+}
+
+func getThroughTunnel(t *testing.T, gateway *httptest.Server, path string) string {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		resp, err := gateway.Client().Get(gateway.URL + path)
+		if err == nil && resp.StatusCode == 200 {
+			b, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			return string(b)
+		}
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("path %s never reached the tunnel: err=%v", path, err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+func mustPort(t *testing.T, rawURL string) int {
+	t.Helper()
+	_, port, err := net.SplitHostPort(strings.TrimPrefix(rawURL, "http://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := strconv.Atoi(port)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
 }
 
 func TestSessionReclaimsExpiredLeaseWithoutEventConsumer(t *testing.T) {
@@ -128,18 +152,6 @@ func TestSessionReclaimsExpiredLeaseWithoutEventConsumer(t *testing.T) {
 	cancel()
 	if err := session.Close(); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func serveOneLine(listener net.Listener) {
-	conn, err := listener.Accept()
-	if err != nil {
-		return
-	}
-	defer func() { _ = conn.Close() }()
-	line, err := bufio.NewReader(conn).ReadString('\n')
-	if err == nil {
-		_, _ = fmt.Fprintf(conn, "received: %s", strings.TrimSpace(line)+"\n")
 	}
 }
 

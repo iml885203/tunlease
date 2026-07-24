@@ -22,9 +22,13 @@ type Server struct {
 	SidecarToken      string
 	TTL, Heartbeat    time.Duration
 	TunnelHost        string
-	Tunnel            http.Handler
+	Tunnel            *Tunnel
 	TunnelFingerprint string
 	OnChange          func()
+	// FailOpen, if set, handles third-party requests that match no active
+	// claim (single-host serve mode points this at the real application). When
+	// nil, unmatched requests get a 404.
+	FailOpen http.Handler
 }
 
 func (s *Server) changed() {
@@ -75,6 +79,18 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/routes", s.routes)
 	if s.Tunnel != nil {
 		mux.Handle("/tunnel", s.Tunnel)
+		// Everything else is third-party traffic: route a claimed path to its
+		// CLI over the tunnel, or 404 so the caller can fall open to the app.
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			if s.Tunnel.ProxyByPath(w, r) {
+				return
+			}
+			if s.FailOpen != nil {
+				s.FailOpen.ServeHTTP(w, r)
+				return
+			}
+			http.NotFound(w, r)
+		})
 	}
 	return mux
 }

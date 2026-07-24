@@ -13,6 +13,8 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/http/httputil"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,7 +34,6 @@ type Tunnel struct {
 	fingerprint string
 	mu          sync.Mutex
 	sessions    map[string]*yamux.Session
-	listeners   map[string]net.Listener
 }
 
 func NewTunnel(store registry.Store, tokens map[string]Token) (*Tunnel, error) {
@@ -46,7 +47,6 @@ func NewTunnel(store registry.Store, tokens map[string]Token) (*Tunnel, error) {
 		tlsConfig:   &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13},
 		fingerprint: fingerprint,
 		sessions:    map[string]*yamux.Session{},
-		listeners:   map[string]net.Listener{},
 	}, nil
 }
 
@@ -61,16 +61,16 @@ func (t *Tunnel) Sync() {
 	defer t.mu.Unlock()
 	for id, session := range t.sessions {
 		if !live[id] {
-			if listener := t.listeners[id]; listener != nil {
-				_ = listener.Close()
-				delete(t.listeners, id)
-			}
 			_ = session.Close()
 			delete(t.sessions, id)
 		}
 	}
 }
 
+// ServeHTTP handles the CLI's tunnel WebSocket upgrade. It establishes the
+// inner TLS + yamux session and keeps it in the session map. Third-party
+// traffic no longer arrives on a per-claim TCP port; it enters as HTTP on the
+// gateway's public listener and is demuxed to the right session by ProxyByPath.
 func (t *Tunnel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	principal, ok := authenticate(t.tokens, r)
 	claimID := r.Header.Get("X-Tunlease-Claim")
@@ -80,27 +80,18 @@ func (t *Tunnel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	listener, err := net.Listen("tcp", net.JoinHostPort("0.0.0.0", itoa(claim.RemotePort)))
-	if err != nil {
-		http.Error(w, "tunnel port unavailable", http.StatusConflict)
-		return
-	}
-
 	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{"*"}})
 	if err != nil {
-		_ = listener.Close()
 		return
 	}
 	conn := websocket.NetConn(context.Background(), ws, websocket.MessageBinary)
 	secure := tls.Server(conn, t.tlsConfig)
 	if err = secure.HandshakeContext(r.Context()); err != nil {
-		_ = listener.Close()
 		_ = conn.Close()
 		return
 	}
 	session, err := yamux.Server(secure, yamuxConfig())
 	if err != nil {
-		_ = listener.Close()
 		_ = conn.Close()
 		return
 	}
@@ -110,36 +101,64 @@ func (t *Tunnel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = old.Close()
 	}
 	t.sessions[claimID] = session
-	t.listeners[claimID] = listener
 	t.mu.Unlock()
 
 	defer func() {
-		_ = listener.Close()
 		_ = session.Close()
 		t.mu.Lock()
 		if t.sessions[claimID] == session {
 			delete(t.sessions, claimID)
-			delete(t.listeners, claimID)
 		}
 		t.mu.Unlock()
 	}()
-	go func() {
-		<-session.CloseChan()
-		_ = listener.Close()
-	}()
+	// Hold the request open for the session's lifetime; the CLI keeps the WS up
+	// with yamux keepalives and reconnects if it drops.
+	<-session.CloseChan()
+}
 
-	for {
-		client, err := listener.Accept()
-		if err != nil {
-			return
-		}
-		stream, err := session.Open()
-		if err != nil {
-			_ = client.Close()
-			return
-		}
-		go bridge(client, stream)
+// ProxyByPath routes an inbound third-party HTTP request to the CLI that owns
+// the longest claimed path prefix matching the request path. Each request opens
+// one yamux stream to that CLI, which forwards it to its local target. Requests
+// that match no claim (or whose CLI is not connected) get a 404 so the caller
+// can fall open to the real application.
+func (t *Tunnel) ProxyByPath(w http.ResponseWriter, r *http.Request) bool {
+	claimID, ok := t.matchClaim(r.URL.Path)
+	if !ok {
+		return false
 	}
+	t.mu.Lock()
+	session := t.sessions[claimID]
+	t.mu.Unlock()
+	if session == nil || session.IsClosed() {
+		return false
+	}
+	proxy := &httputil.ReverseProxy{
+		Director: func(req *http.Request) { req.URL.Scheme = "http"; req.URL.Host = "tunlease" },
+		Transport: &http.Transport{
+			DialContext:        func(context.Context, string, string) (net.Conn, error) { return session.Open() },
+			MaxIdleConns:       1,
+			IdleConnTimeout:    5 * time.Second,
+			DisableCompression: true,
+		},
+	}
+	proxy.ServeHTTP(w, r)
+	return true
+}
+
+// matchClaim finds the claim whose longest path prefix contains the request
+// path. Prefixes are stored with a trailing "/*"; a claim on "/webhooks/x/*"
+// matches "/webhooks/x" and "/webhooks/x/anything".
+func (t *Tunnel) matchClaim(path string) (string, bool) {
+	best, bestLen := "", -1
+	for _, claim := range t.store.List() {
+		for _, p := range claim.Paths {
+			base := strings.TrimSuffix(p, "/*")
+			if (path == base || strings.HasPrefix(path, base+"/")) && len(base) > bestLen {
+				best, bestLen = claim.ID, len(base)
+			}
+		}
+	}
+	return best, bestLen >= 0
 }
 
 func (t *Tunnel) claim(id string) (registry.Claim, bool) {
@@ -157,22 +176,6 @@ func yamuxConfig() *yamux.Config {
 	c.EnableKeepAlive = true
 	c.KeepAliveInterval = 25 * time.Second
 	return c
-}
-
-func bridge(a, b net.Conn) {
-	done := make(chan struct{}, 2)
-	copyOne := func(dst, src net.Conn) {
-		_, _ = io.Copy(dst, src)
-		if tcp, ok := dst.(*net.TCPConn); ok {
-			_ = tcp.CloseWrite()
-		}
-		done <- struct{}{}
-	}
-	go copyOne(a, b)
-	go copyOne(b, a)
-	<-done
-	_ = a.Close()
-	_ = b.Close()
 }
 
 func tunnelCertificate() (tls.Certificate, string, error) {
@@ -195,16 +198,4 @@ func tunnelCertificate() (tls.Certificate, string, error) {
 	}
 	sum := sha256.Sum256(der)
 	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: priv}, hex.EncodeToString(sum[:]), nil
-}
-
-func itoa(v int) string {
-	if v == 0 {
-		return "0"
-	}
-	b := make([]byte, 0, 6)
-	for v > 0 {
-		b = append([]byte{byte('0' + v%10)}, b...)
-		v /= 10
-	}
-	return string(b)
 }
