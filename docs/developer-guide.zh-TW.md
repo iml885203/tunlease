@@ -124,11 +124,17 @@ tunle release --to 8080
 `path already claimed`
 : Path 與現有租約重疊。執行 `tunle list --all` 查看 owner 與到期時間，不要接管其他開發者的測試。
 
+`claim_limit_reached`（HTTP 503）
+: Gateway 上的 active claim 已達上限（`max_claims`，預設 64）。等其中一個被 release 或過期，或請平台團隊調高上限。
+
 Callback 仍然進到 staging app
 : 確認 `claim` process 還在、local port 正確、本機服務有回應，而且 `tunle list` 看得到租約。Tunnel 無法連線時 gateway 會刻意 fail-open 回原始 app。
 
 無法透過 TLS 連上 gateway
 : scheme 預設為 `https`，client 不會自動退回 `http`。若 gateway 沒有 TLS（例如 localhost），請改用明確的 `http://` gateway URL。
+
+`x509: certificate signed by unknown authority`
+: gateway 用 HTTPS，但憑證是自簽或內網 CA，本機不信任。加上 `--insecure`（或 `TUNLEASE_INSECURE=1`）。這只跳過 gateway 的外層 TLS 檢查；tunnel 的 inner TLS 仍以 fingerprint pin 住。
 
 使用其他 release URL
 : 設定 `TUNLEASE_BASE_URL`，或在 `tunle update` 加上 `--base-url`。

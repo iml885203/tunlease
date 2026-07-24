@@ -127,11 +127,17 @@ Local claim metadata is stored in `~/.tunlease/state.json`; it does not contain 
 `path already claimed`
 : The path overlaps another active lease. Run `tunle list --all` to see its owner and expiry; do not take over another developer's test.
 
+`claim_limit_reached` (HTTP 503)
+: The gateway is already holding its maximum number of active claims (`max_claims`, default 64). Wait for one to be released or expire, or ask the platform team to raise the limit.
+
 Callbacks still reach the staging app
 : Confirm that the `claim` process is running, the local port is correct, the local service responds, and `tunle list` shows the lease. The gateway intentionally fails open to the original app when the tunnel cannot be reached.
 
 Cannot connect to the gateway over TLS
 : The scheme defaults to `https` and the client does not silently retry over `http`. If the gateway has no TLS (e.g. localhost), use an explicit `http://` gateway URL.
+
+`x509: certificate signed by unknown authority`
+: The gateway uses HTTPS but a self-signed or internal certificate your machine doesn't trust. Add `--insecure` (or `TUNLEASE_INSECURE=1`). This skips only the gateway's outer TLS check; the tunnel's inner TLS stays fingerprint-pinned.
 
 Use another release URL
 : Set `TUNLEASE_BASE_URL`, or pass `--base-url` to `tunle update`.

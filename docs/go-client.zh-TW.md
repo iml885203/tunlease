@@ -92,7 +92,17 @@ Caller 負責 context 與 session lifecycle：
 
 Package 不會讀取 `~/.tunlease.yaml`、environment variables 或 CLI state。嵌入它的應用程式必須把 gateway URL 傳給 `tunnelclient.New`。Gateway 未設定 client token 時，`Token` 可以留空。
 
-若 gateway 啟用認證，應用程式必須從自己的安全設定來源取得個人 token。不要把 token 寫進 log，也不要透過 local status API 暴露。應用程式需要自訂 HTTP transport 時，可以傳入 `Config.HTTPClient`。
+若 gateway 啟用認證，應用程式必須從自己的安全設定來源取得個人 token。不要把 token 寫進 log，也不要透過 local status API 暴露。
+
+`tunnelclient.Config` 欄位：
+
+| 欄位 | 意義 |
+|---|---|
+| `Gateway` | Gateway host 或 URL。scheme 可省略（見 `DefaultScheme`）；若沒有 path，會自動補上控制面前綴 `/_tunlease`。 |
+| `Token` | Bearer token；gateway 未設 token 時留空。 |
+| `Insecure` | 跳過 gateway 外層 TLS 憑證驗證（自簽／內網 gateway）。tunnel 的 inner TLS 仍以 fingerprint pin 住。設了 `HTTPClient` 時此欄被忽略。 |
+| `DefaultScheme` | `Gateway` 沒帶 scheme 時的預設。預設 `https`；沒有 TLS 的 gateway 設 `http`。 |
+| `HTTPClient` | 自訂 HTTP transport。設了之後 `Insecure` 會被忽略——TLS 請自行在 client 上設定。 |
 
 ## 列出與釋放 claim
 

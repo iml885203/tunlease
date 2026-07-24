@@ -92,7 +92,17 @@ The caller owns the context and session:
 
 The package does not read `~/.tunlease.yaml`, environment variables, or CLI state. The embedding application must pass the gateway URL to `tunnelclient.New`. `Token` may be empty when the gateway has no client tokens configured.
 
-For an authenticated gateway, obtain the personal token through the application's secure configuration path. Do not log it or expose it through a local status API. `Config.HTTPClient` may be supplied when the application needs a custom HTTP transport.
+For an authenticated gateway, obtain the personal token through the application's secure configuration path. Do not log it or expose it through a local status API.
+
+`tunnelclient.Config` fields:
+
+| Field | Meaning |
+|---|---|
+| `Gateway` | Gateway host or URL. Scheme is optional (see `DefaultScheme`); if it has no path, the control-plane prefix `/_tunlease` is appended automatically. |
+| `Token` | Bearer token; empty when the gateway has no tokens configured. |
+| `Insecure` | Skip verification of the gateway's outer TLS certificate (self-signed / internal gateway). The tunnel's inner TLS stays fingerprint-pinned. Ignored when `HTTPClient` is set. |
+| `DefaultScheme` | Scheme used when `Gateway` has none. Defaults to `https`; set `http` for a gateway without TLS. |
+| `HTTPClient` | Custom HTTP transport. When supplied, `Insecure` is ignored — configure TLS on the client yourself. |
 
 ## Listing and releasing claims
 
