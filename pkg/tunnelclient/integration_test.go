@@ -40,6 +40,7 @@ func TestAnonymousSessionDataPathAndClose(t *testing.T) {
 		Tunnel:            tunnel,
 		TunnelFingerprint: tunnel.Fingerprint(),
 		OnChange:          tunnel.Sync,
+		ControlPrefix:     tunnelclient.DefaultControlPrefix,
 	}
 	httpServer := httptest.NewServer(server.Handler())
 	defer httpServer.Close()
@@ -127,6 +128,7 @@ func TestSessionReclaimsExpiredLeaseWithoutEventConsumer(t *testing.T) {
 		Tunnel:            tunnel,
 		TunnelFingerprint: tunnel.Fingerprint(),
 		OnChange:          tunnel.Sync,
+		ControlPrefix:     tunnelclient.DefaultControlPrefix,
 	}
 	httpServer := httptest.NewServer(server.Handler())
 	defer httpServer.Close()

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"time"
 
@@ -14,6 +16,20 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
+
+// buildFailOpen returns a reverse proxy to the given app URL, or nil if empty.
+// Unmatched third-party requests are proxied here (the original application);
+// nil means unmatched requests get a 404.
+func buildFailOpen(appURL string) (http.Handler, error) {
+	if appURL == "" {
+		return nil, nil
+	}
+	target, err := url.Parse(appURL)
+	if err != nil || target.Scheme == "" || target.Host == "" {
+		return nil, fmt.Errorf("invalid fail-open URL %q", appURL)
+	}
+	return httputil.NewSingleHostReverseProxy(target), nil
+}
 
 func newGatewayCommand() *cobra.Command {
 	var configPath string
@@ -91,7 +107,11 @@ func runGateway(configPath string) error {
 	if err != nil {
 		return fmt.Errorf("create tunnel server: %w", err)
 	}
-	srv := &gatewayd.Server{Store: store, Tokens: tokens, SidecarToken: c.SidecarToken, TTL: ttl, Heartbeat: time.Duration(c.HeartbeatSeconds) * time.Second, TunnelHost: host, Tunnel: tunnel, TunnelFingerprint: tunnel.Fingerprint(), OnChange: tunnel.Sync}
+	failOpen, err := buildFailOpen(c.FailOpenURL)
+	if err != nil {
+		return err
+	}
+	srv := &gatewayd.Server{Store: store, Tokens: tokens, SidecarToken: c.SidecarToken, TTL: ttl, Heartbeat: time.Duration(c.HeartbeatSeconds) * time.Second, TunnelHost: host, Tunnel: tunnel, TunnelFingerprint: tunnel.Fingerprint(), OnChange: tunnel.Sync, ControlPrefix: c.ControlPrefix, FailOpen: failOpen}
 	// Lease expiry is lazy; periodic sync closes sessions whose claims expired.
 	go func() {
 		for range time.Tick(10 * time.Second) {

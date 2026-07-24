@@ -26,6 +26,35 @@ flowchart LR
 - v1 gateway 保持單一 replica。Staging 預設使用 memory registry；Pod replacement 時 CLI 會重新 claim，sidecar 暫時把流量送回 app。只有明確需要持久租約或多 replica 時才使用 Redis。
 - 確認 Ingress 支援 WebSocket upgrade，read/send timeout 至少 3600 秒。
 
+## Same-domain 部署（預設）
+
+建議且預設的拓撲是 *same-domain*：gateway 擋在單一 app、單一 host 前面。Control
+plane 服務於一個可設定的 URL 路徑前綴 `control_prefix`，預設為 `/_tunlease`。因此
+claim API 位於 `<host>/_tunlease/api/v1/claims`、tunnel WebSocket 位於
+`<host>/_tunlease/tunnel`、healthz 位於 `<host>/_tunlease/healthz`。
+
+其餘所有 path 都視為第三方流量。當請求命中一個 active claim 時，gateway 會把它
+tunnel 到開發者的 localhost；否則 gateway 會 *fail open* 到 `fail_open_url`——也就是
+原本的 app——若 `fail_open_url` 未設定，則回傳 `404`。
+
+有兩個 gateway config key 控制這個行為：
+
+```yaml
+config:
+  # Control plane 的 URL 路徑前綴。未設定時預設為 /_tunlease。
+  control_prefix: /_tunlease
+  # 未被 claim 的第三方流量 fail open 的目的地（原本的 app）。
+  # 若未設定，未命中的 path 會回傳 404。
+  fail_open_url: http://myapp-origin.default.svc
+```
+
+gateway 上的 control plane 位於這個前綴底下，但開發者不用把它寫進 gateway URL——
+client 會自動附加 control plane 的路徑前綴，scheme 也預設為 `https`。請直接發給開發者
+裸 host `myapp.example.com`。
+
+以 host 為基礎、把 control plane 拆到與 app 不同子網域的做法（different-domain）尚在
+規劃、未完整實作；目前請以 same-domain 為主。
+
 ## 自架前提
 
 Chart 與 `deploy/sidecar-patch.yaml` 預設使用 placeholder registry、Ingress

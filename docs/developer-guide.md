@@ -39,10 +39,13 @@ On Windows, rerun the PowerShell installer to update while preserving `tunle.exe
 
 ## Configure
 
-Create `~/.tunlease.yaml` and restrict its permissions on macOS/Linux:
+Create `~/.tunlease.yaml` and restrict its permissions on macOS/Linux. Use just
+the gateway domain your platform team gave you — the client adds the control-plane
+prefix automatically and defaults the scheme to `https`, so omit it (use an
+explicit `http://` for a gateway without TLS, e.g. localhost):
 
 ```yaml
-gateway: https://tunlease.example.com
+gateway: myapp.example.com
 token: YOUR_PERSONAL_TOKEN
 ```
 
@@ -54,7 +57,7 @@ On Windows PowerShell:
 
 ```powershell
 @"
-gateway: https://tunlease.example.com
+gateway: myapp.example.com
 token: YOUR_PERSONAL_TOKEN
 "@ | Set-Content (Join-Path $HOME ".tunlease.yaml")
 ```
@@ -118,6 +121,9 @@ Local claim metadata is stored in `~/.tunlease/state.json`; it does not contain 
 
 Callbacks still reach the staging app
 : Confirm that the `claim` process is running, the local port is correct, the local service responds, and `tunle list` shows the lease. The sidecar intentionally fails open to the original app when the tunnel cannot be reached.
+
+Cannot connect to the gateway over TLS
+: The scheme defaults to `https` and the client does not silently retry over `http`. If the gateway has no TLS (e.g. localhost), use an explicit `http://` gateway URL.
 
 Use another release URL
 : Set `TUNLEASE_BASE_URL`, or pass `--base-url` to `tunle update`.

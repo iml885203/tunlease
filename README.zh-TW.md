@@ -69,11 +69,13 @@ curl -fsSL https://tunlease.example.com/install/install.sh | bash
 irm https://tunlease.example.com/install/install.ps1 | iex
 ```
 
-接著用一行命令認領 path——用 `--gateway` 指向 gateway，用 `--to` 把 path 轉到本機
-port。Ctrl+C 釋放租約。
+接著用一行命令認領 path——用 `--gateway` 指向 gateway（就填平台團隊給你的網域），
+用 `--to` 把 path 轉到本機 port。Ctrl+C 釋放租約。scheme 預設為 `https`，可以省略；
+若 gateway 沒有 TLS（例如 localhost）就明確加上 `http://`。control plane 的路徑前綴由
+client 自動附加，所以不用自己在網址裡加 `/_tunlease`。
 
 ```bash
-tunle claim /webhooks/provider/callback/* --to 8080 --gateway https://tunlease.example.com
+tunle claim /webhooks/provider/callback/* --to 8080 --gateway myapp.example.com
 ```
 
 Claim 之後真正的 staging 第三方 callback 會進到你的本機，所以請先啟動本機服務、
@@ -82,14 +84,14 @@ Claim 之後真正的 staging 第三方 callback 會進到你的本機，所以�
 若不想每次重打 `--gateway`，設成環境變數一次即可：
 
 ```bash
-export TUNLEASE_GATEWAY=https://tunlease.example.com
+export TUNLEASE_GATEWAY=myapp.example.com
 tunle claim /webhooks/provider/callback/* --to 8080
 ```
 
 或者，若偏好用檔案，放進 `~/.tunlease.yaml`（gateway 需要認證時，`token:` 也寫這裡）：
 
 ```yaml
-gateway: https://tunlease.example.com
+gateway: myapp.example.com
 ```
 
 其餘指令都用同樣的簡短形式：

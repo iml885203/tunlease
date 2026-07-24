@@ -29,7 +29,7 @@ tokens:
   - {owner: e2e, token: "$TOKEN"}
 EOF
 
-./bin/tunlease gateway --config "$TMP/config.yaml" > "$TMP/gateway.log" 2>&1 &
+./bin/tunle gateway --config "$TMP/config.yaml" > "$TMP/gateway.log" 2>&1 &
 PIDS+=($!)
 
 # 本機目標 server：回固定字串
@@ -44,22 +44,24 @@ HTTPServer(('127.0.0.1', $PORT_LOCAL), H).serve_forever()
 PIDS+=($!)
 
 for i in $(seq 1 20); do
-  curl -sf "http://127.0.0.1:$PORT_API/healthz" >/dev/null && break
+  curl -sf "http://127.0.0.1:$PORT_API/_tunlease/healthz" >/dev/null && break
   [ "$i" = 20 ] && fail "gateway did not become healthy"
   sleep 0.3
 done
 
-export TUNLEASE_GATEWAY="http://127.0.0.1:$PORT_API" TUNLEASE_TOKEN="$TOKEN"
+# Control plane lives under /_tunlease (same-domain default); the CLI's gateway
+# base URL includes it. Third-party paths (e.g. /test/cb) stay at the root.
+export TUNLEASE_GATEWAY="http://127.0.0.1:$PORT_API/_tunlease" TUNLEASE_TOKEN="$TOKEN"
 
 # --- 白名單外 → 403 ---
-if ./bin/tunlease claim --to $PORT_LOCAL /outside/cb 2> "$TMP/deny.log"; then
+if ./bin/tunle claim --to $PORT_LOCAL /outside/cb 2> "$TMP/deny.log"; then
   fail "claim outside whitelist should fail"
 fi
 grep -qi "allowlist\|not allowed" "$TMP/deny.log" || fail "403 message missing: $(cat "$TMP/deny.log")"
 echo "OK: whitelist 403"
 
 # --- claim + tunnel ---
-./bin/tunlease claim --to $PORT_LOCAL /test/cb > "$TMP/claim.log" 2>&1 &
+./bin/tunle claim --to $PORT_LOCAL /test/cb > "$TMP/claim.log" 2>&1 &
 CLAIM_PID=$!
 PIDS+=($CLAIM_PID)
 
@@ -72,24 +74,24 @@ done
 echo "OK: claim → tunnel → local server"
 
 # --- 衝突 → 409（另一個 owner 視角：同 token 也該擋，前綴互蓋）---
-if ./bin/tunlease claim --to $PORT_LOCAL /test/cb/deeper 2> "$TMP/conflict.log"; then
+if ./bin/tunle claim --to $PORT_LOCAL /test/cb/deeper 2> "$TMP/conflict.log"; then
   fail "overlapping claim should fail"
 fi
 grep -q "already claimed by e2e" "$TMP/conflict.log" || fail "409 message missing: $(cat "$TMP/conflict.log")"
 echo "OK: overlap 409 with claimed_by"
 
 # --- list 有 (you) 標記 ---
-./bin/tunlease list | grep -q "(you)" || fail "list missing (you) marker"
+./bin/tunle list | grep -q "(you)" || fail "list missing (you) marker"
 echo "OK: list shows own claim"
 
 # --- kill -9 → TTL 過期 → 租約消失、claim 名額釋回 ---
 kill -9 "$CLAIM_PID"
 sleep 9
-CLAIMS=$(curl -sf -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$PORT_API/api/v1/claims")
+CLAIMS=$(curl -sf -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$PORT_API/_tunlease/api/v1/claims")
 echo "$CLAIMS" | grep -q '"claims":\[\]' || fail "lease survived TTL after kill -9: $CLAIMS"
 echo "OK: kill -9 → TTL expiry → lease gone"
 
 # --- release 後 state 清乾淨（release 殘留 state 條目）---
-./bin/tunlease release /test/cb > /dev/null 2>&1 || true
+./bin/tunle release /test/cb > /dev/null 2>&1 || true
 
 echo "ALL E2E CHECKS PASSED"

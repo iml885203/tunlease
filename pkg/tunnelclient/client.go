@@ -112,19 +112,46 @@ type Session struct {
 }
 
 // New validates config and creates a reusable client.
+// DefaultControlPrefix is the URL path prefix the gateway serves its control
+// plane under on a same-domain deployment. The client adds it automatically so
+// users only need to give the gateway's domain.
+const DefaultControlPrefix = "/_tunlease"
+
 func New(cfg Config) (*Client, error) {
-	if cfg.Gateway == "" {
-		return nil, errors.New("gateway is required")
-	}
-	u, err := url.Parse(cfg.Gateway)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return nil, errors.New("gateway must be an absolute http or https URL")
+	base, err := normalizeGateway(cfg.Gateway)
+	if err != nil {
+		return nil, err
 	}
 	h := cfg.HTTPClient
 	if h == nil {
 		h = http.DefaultClient
 	}
-	return &Client{gateway: strings.TrimRight(cfg.Gateway, "/"), token: cfg.Token, http: h}, nil
+	return &Client{gateway: base, token: cfg.Token, http: h}, nil
+}
+
+// normalizeGateway turns user-friendly input into the control-plane base URL.
+// The scheme may be omitted (defaults to https), so `myapp.example.com` becomes
+// `https://myapp.example.com`. When only a host is given (no path), the default
+// control-plane prefix is appended, so the API/tunnel land under it. A user who
+// supplies an explicit path is trusted as-is (advanced / different-domain).
+func normalizeGateway(gateway string) (string, error) {
+	if gateway == "" {
+		return "", errors.New("gateway is required")
+	}
+	if !strings.Contains(gateway, "://") {
+		gateway = "https://" + gateway
+	}
+	u, err := url.Parse(gateway)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return "", errors.New("gateway must be a host or an http(s) URL")
+	}
+	u.Path = strings.TrimRight(u.Path, "/")
+	if u.Path == "" {
+		u.Path = DefaultControlPrefix
+	}
+	u.RawQuery = ""
+	u.Fragment = ""
+	return u.String(), nil
 }
 
 // Gateway returns the normalized gateway base URL used by the client.
@@ -323,7 +350,7 @@ func (c *Client) do(ctx context.Context, method, endpoint string, in, out any) e
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return err
+		return c.connectHint(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 300 {
@@ -335,6 +362,17 @@ func (c *Client) do(ctx context.Context, method, endpoint string, in, out any) e
 		return json.NewDecoder(resp.Body).Decode(out)
 	}
 	return nil
+}
+
+// connectHint annotates a connection failure with a hint to try http:// when
+// the gateway is https (the default when the scheme is omitted). It does NOT
+// retry over http automatically — silently downgrading to cleartext would be a
+// security footgun and would mask the real error.
+func (c *Client) connectHint(err error) error {
+	if strings.HasPrefix(c.gateway, "https://") {
+		return fmt.Errorf("%w (if the gateway has no TLS — e.g. localhost or an internal host — use an http:// gateway URL)", err)
+	}
+	return err
 }
 
 func joinURL(base, endpoint string) (string, error) {

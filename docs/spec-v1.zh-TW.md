@@ -27,7 +27,7 @@
 
 ### 2.2 共通規則
 
-- API 位於 `/api/v1/`；WebSocket tunnel upgrade 使用同 host 的 `/tunnel`。
+- Control plane 服務於可設定的 `control_prefix`（預設 `/_tunlease`）。API 位於 `<control_prefix>/api/v1/`、WebSocket tunnel upgrade 位於 `<control_prefix>/tunnel`、healthz 位於 `<control_prefix>/healthz`。前綴之外的第三方流量以 path 分流：命中 active claim 者 tunnel，否則 fail open 到 `fail_open_url`（未設定時回傳 `404`）。Client 會自動附加這個前綴，scheme 也預設為 `https`，所以使用者只需設定 gateway host。
 - 未設定 token 時停用 client authentication。啟用時，API 與 tunnel 都使用 `Authorization: Bearer <token>`；每個 static token 對應一個 owner，建立 tunnel 還必須提供該 owner 的 claim ID。未認證的 client 共用 `anonymous` owner。
 - Error 使用 `{"error":"<machine_code>","detail":"<human message>",...}`；client 必須忽略未知 JSON field。
 - 時間使用 RFC 3339 UTC，lease expiry 以 server clock 判定。

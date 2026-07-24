@@ -38,10 +38,12 @@ tunle update
 
 ## 設定
 
-macOS/Linux 建立 `~/.tunlease.yaml` 並限制權限：
+macOS/Linux 建立 `~/.tunlease.yaml` 並限制權限。只要填平台團隊給你的 gateway 網域即可——
+client 會自動附加 control plane 的路徑前綴，scheme 也預設為 `https`，可以省略（若 gateway
+沒有 TLS，例如 localhost，就明確加上 `http://`）：
 
 ```yaml
-gateway: https://tunlease.example.com
+gateway: myapp.example.com
 token: YOUR_PERSONAL_TOKEN
 ```
 
@@ -53,7 +55,7 @@ Windows PowerShell：
 
 ```powershell
 @"
-gateway: https://tunlease.example.com
+gateway: myapp.example.com
 token: YOUR_PERSONAL_TOKEN
 "@ | Set-Content (Join-Path $HOME ".tunlease.yaml")
 ```
@@ -117,6 +119,9 @@ tunle release --to 8080
 
 Callback 仍然進到 staging app
 : 確認 `claim` process 還在、local port 正確、本機服務有回應，而且 `tunle list` 看得到租約。Tunnel 無法連線時 sidecar 會刻意 fail-open 回原始 app。
+
+無法透過 TLS 連上 gateway
+: scheme 預設為 `https`，client 不會自動退回 `http`。若 gateway 沒有 TLS（例如 localhost），請改用明確的 `http://` gateway URL。
 
 使用其他 release URL
 : 設定 `TUNLEASE_BASE_URL`，或在 `tunle update` 加上 `--base-url`。

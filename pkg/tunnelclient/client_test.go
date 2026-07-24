@@ -95,7 +95,7 @@ func TestStartNormalizesPathsAndReleasesWhenTunnelFails(t *testing.T) {
 	var createdPath, released string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/claims":
+		case r.Method == http.MethodPost && r.URL.Path == "/_tunlease/api/v1/claims":
 			body, _ := io.ReadAll(r.Body)
 			var in struct {
 				Paths []string `json:"paths"`
@@ -105,9 +105,9 @@ func TestStartNormalizesPathsAndReleasesWhenTunnelFails(t *testing.T) {
 				createdPath = in.Paths[0]
 			}
 			_ = json.NewEncoder(w).Encode(Claim{ID: "claim-1", Paths: in.Paths, Fingerprint: "invalid"})
-		case r.Method == http.MethodGet && r.URL.Path == "/tunnel":
+		case r.Method == http.MethodGet && r.URL.Path == "/_tunlease/tunnel":
 			http.Error(w, "not a websocket", http.StatusBadGateway)
-		case r.Method == http.MethodDelete && r.URL.Path == "/api/v1/claims/claim-1":
+		case r.Method == http.MethodDelete && r.URL.Path == "/_tunlease/api/v1/claims/claim-1":
 			released = "claim-1"
 			w.WriteHeader(http.StatusNoContent)
 		default:

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -23,6 +24,18 @@ type Config struct {
 	RedisURL         string   `yaml:"redis_url"`
 	RedisPrefix      string   `yaml:"redis_prefix"`
 	SidecarToken     string   `yaml:"sidecar_token"`
+	// ControlPrefix is the URL path prefix under which the control plane (claim
+	// API, tunnel WebSocket, healthz) is served. It keeps the control plane out
+	// of the way of third-party paths on the SAME domain — e.g. with the default
+	// "/_tunlease", claims live at /_tunlease/api/v1/claims and everything else
+	// is treated as third-party traffic. Set it to "" to serve the control plane
+	// at the root (different-domain deployments, where the gateway has its own
+	// host and no third-party paths to avoid).
+	ControlPrefix string `yaml:"control_prefix"`
+	// FailOpenURL, if set, is where third-party requests that match no active
+	// claim are proxied (the original application). When empty, unmatched
+	// requests get a 404.
+	FailOpenURL string `yaml:"fail_open_url"`
 }
 
 func (c *Config) Defaults() {
@@ -44,6 +57,15 @@ func (c *Config) Defaults() {
 	if c.RedisPrefix == "" {
 		c.RedisPrefix = "tunlease"
 	}
+	// Default to same-domain deployment: keep the control plane under a distinct
+	// prefix so it doesn't collide with the application's own paths. Set
+	// control_prefix to "/" for a different-domain deployment (control plane at
+	// the root of a dedicated host).
+	if c.ControlPrefix == "" {
+		c.ControlPrefix = "/_tunlease"
+	}
+	// Normalize: strip trailing slash; treat "/" as root (no prefix).
+	c.ControlPrefix = strings.TrimRight(c.ControlPrefix, "/")
 }
 func (c Config) Validate() error {
 	if c.MaxClaims < 1 {
@@ -59,6 +81,9 @@ func (c Config) Validate() error {
 	}
 	if c.Registry == "redis" && c.RedisURL == "" {
 		return errors.New("redis_url is required for redis registry")
+	}
+	if c.ControlPrefix != "" && !strings.HasPrefix(c.ControlPrefix, "/") {
+		return errors.New("control_prefix must start with /")
 	}
 	return nil
 }

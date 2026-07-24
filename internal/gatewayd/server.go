@@ -23,6 +23,10 @@ type Server struct {
 	Tunnel            *Tunnel
 	TunnelFingerprint string
 	OnChange          func()
+	// ControlPrefix is the path prefix the control plane is mounted under (e.g.
+	// "/_tunlease"). Empty means the control plane is at the root (a dedicated
+	// host with no third-party paths to avoid).
+	ControlPrefix string
 	// FailOpen, if set, handles third-party requests that match no active
 	// claim (single-host serve mode points this at the real application). When
 	// nil, unmatched requests get a 404.
@@ -68,27 +72,45 @@ func errj(w http.ResponseWriter, status int, code, detail string, extra map[stri
 	write(w, status, m)
 }
 func (s *Server) Handler() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
-	mux.HandleFunc("POST /api/v1/claims", s.claim)
-	mux.HandleFunc("POST /api/v1/claims/{id}/heartbeat", s.heartbeat)
-	mux.HandleFunc("DELETE /api/v1/claims/{id}", s.release)
-	mux.HandleFunc("GET /api/v1/claims", s.list)
-	mux.HandleFunc("GET /api/v1/routes", s.routes)
+	// Control plane lives under ControlPrefix (e.g. "/_tunlease"): claim API,
+	// tunnel WebSocket, and healthz. It is registered on its own mux so it can
+	// be mounted under the prefix with StripPrefix.
+	control := http.NewServeMux()
+	control.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	control.HandleFunc("POST /api/v1/claims", s.claim)
+	control.HandleFunc("POST /api/v1/claims/{id}/heartbeat", s.heartbeat)
+	control.HandleFunc("DELETE /api/v1/claims/{id}", s.release)
+	control.HandleFunc("GET /api/v1/claims", s.list)
+	control.HandleFunc("GET /api/v1/routes", s.routes)
 	if s.Tunnel != nil {
-		mux.Handle("/tunnel", s.Tunnel)
-		// Everything else is third-party traffic: route a claimed path to its
-		// CLI over the tunnel, or 404 so the caller can fall open to the app.
-		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			if s.Tunnel.ProxyByPath(w, r) {
-				return
-			}
-			if s.FailOpen != nil {
-				s.FailOpen.ServeHTTP(w, r)
-				return
-			}
-			http.NotFound(w, r)
-		})
+		control.Handle("/tunnel", s.Tunnel)
+	}
+
+	// Third-party traffic (everything outside the control prefix) is routed to a
+	// claimed path's tunnel, else fail-open, else 404.
+	thirdParty := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.Tunnel != nil && s.Tunnel.ProxyByPath(w, r) {
+			return
+		}
+		if s.FailOpen != nil {
+			s.FailOpen.ServeHTTP(w, r)
+			return
+		}
+		http.NotFound(w, r)
+	})
+
+	mux := http.NewServeMux()
+	mux.Handle("/", thirdParty)
+	if s.ControlPrefix != "" {
+		// Same-domain: control plane lives under the prefix, out of the way of
+		// the application's own paths.
+		mux.Handle(s.ControlPrefix+"/", http.StripPrefix(s.ControlPrefix, control))
+	} else {
+		// No prefix: control plane at the root, third-party demux as fallback.
+		// The control mux's explicit patterns win over "/" for their paths.
+		mux.Handle("/api/v1/", control)
+		mux.Handle("/tunnel", control)
+		mux.Handle("/healthz", control)
 	}
 	return mux
 }

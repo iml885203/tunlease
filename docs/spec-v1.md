@@ -27,7 +27,7 @@ The developer needs no Kubernetes access. The CLI initiates a purpose-built reve
 
 ### 2.2 Common rules
 
-- APIs live under `/api/v1/`; WebSocket tunnel upgrades use `/tunnel` on the same host.
+- The control plane is served under a configurable `control_prefix` (default `/_tunlease`). APIs live at `<control_prefix>/api/v1/`, the WebSocket tunnel upgrade at `<control_prefix>/tunnel`, and health at `<control_prefix>/healthz`. Third-party traffic outside the prefix is demultiplexed by path: a request matching an active claim is tunnelled, otherwise it fails open to `fail_open_url` (or `404` when unset). The client appends this prefix automatically and defaults the scheme to `https`, so a user configures only the gateway host.
 - Client authentication is disabled when no tokens are configured. When enabled, the API and tunnel use `Authorization: Bearer <token>`; each static token maps to an owner, and tunnel establishment also requires the owned claim ID. Unauthenticated clients share the `anonymous` owner.
 - Errors use `{"error":"<machine_code>","detail":"<human message>",...}`. Clients must ignore unknown JSON fields.
 - Times use RFC 3339 UTC. Lease expiry is determined by the server clock.

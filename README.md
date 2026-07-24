@@ -73,10 +73,12 @@ irm https://tunlease.example.com/install/install.ps1 | iex
 ```
 
 Then claim a path in one command — point it at the gateway with `--gateway`
-and forward the path to a local port with `--to`. Ctrl+C releases it.
+(just the domain your platform team gave you) and forward the path to a local
+port with `--to`. Ctrl+C releases it. The scheme defaults to `https`, so you can
+omit it; use an explicit `http://` for a gateway without TLS (e.g. localhost).
 
 ```bash
-tunle claim /webhooks/provider/callback/* --to 8080 --gateway https://tunlease.example.com
+tunle claim /webhooks/provider/callback/* --to 8080 --gateway myapp.example.com
 ```
 
 Claims receive real staging callbacks, so start your local service first and
@@ -85,7 +87,7 @@ claim the narrowest path you need.
 To avoid repeating `--gateway`, set it once as an environment variable:
 
 ```bash
-export TUNLEASE_GATEWAY=https://tunlease.example.com
+export TUNLEASE_GATEWAY=myapp.example.com
 tunle claim /webhooks/provider/callback/* --to 8080
 ```
 
@@ -93,7 +95,7 @@ Or, if you prefer a file, put it in `~/.tunlease.yaml` (a `token:` line goes
 here too if the gateway requires authentication):
 
 ```yaml
-gateway: https://tunlease.example.com
+gateway: myapp.example.com
 ```
 
 Everything else uses the same short form:

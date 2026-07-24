@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/http/httputil"
-	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -61,20 +59,16 @@ func runServe(parent context.Context, configPath, listen, app string) error {
 		return fmt.Errorf("create tunnel server: %w", err)
 	}
 
-	var failOpen http.Handler
-	if app != "" {
-		target, perr := url.Parse(app)
-		if perr != nil || target.Scheme == "" || target.Host == "" {
-			return fmt.Errorf("invalid --app URL %q", app)
-		}
-		failOpen = httputil.NewSingleHostReverseProxy(target)
+	failOpen, err := buildFailOpen(app)
+	if err != nil {
+		return err
 	}
 
 	gw := &gatewayd.Server{
 		Store: store, Tokens: tokens, SidecarToken: c.SidecarToken, TTL: ttl,
 		Heartbeat: time.Duration(c.HeartbeatSeconds) * time.Second, TunnelHost: "127.0.0.1",
 		Tunnel: tunnel, TunnelFingerprint: tunnel.Fingerprint(),
-		OnChange: tunnel.Sync, FailOpen: failOpen,
+		OnChange: tunnel.Sync, FailOpen: failOpen, ControlPrefix: c.ControlPrefix,
 	}
 
 	ctx, stop := signal.NotifyContext(parent, syscall.SIGINT, syscall.SIGTERM)

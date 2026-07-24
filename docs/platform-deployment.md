@@ -26,6 +26,39 @@ Blue nodes are deployed from this repository. Neutral nodes belong to the existi
 - Keep the v1 gateway at one replica. The memory registry is the current default: on Pod replacement, the CLI creates a fresh lease and tunnel while the sidecar sends traffic to the app. Use Redis only when persistent leases or multiple replicas are explicitly required.
 - Ensure the Ingress supports WebSocket upgrades and read/send timeouts of at least 3600 seconds.
 
+## Same-domain deployment (default)
+
+The recommended and default topology is *same-domain*: the gateway sits in front
+of one app on one host. The control plane is served under a configurable URL path
+prefix, `control_prefix`, which defaults to `/_tunlease`. So the claim API lives at
+`<host>/_tunlease/api/v1/claims`, the tunnel WebSocket at `<host>/_tunlease/tunnel`,
+and health at `<host>/_tunlease/healthz`.
+
+Every other path is treated as third-party traffic. When a request matches an
+active claim, the gateway tunnels it to the developer's localhost. When it does
+not, the gateway *fails open* to `fail_open_url` — the original app — or returns
+`404` if `fail_open_url` is unset.
+
+Two gateway config keys govern this:
+
+```yaml
+config:
+  # URL path prefix for the control plane. Defaults to /_tunlease when unset.
+  control_prefix: /_tunlease
+  # Where unclaimed third-party traffic falls open to (the original app).
+  # If unset, unmatched paths return 404 instead.
+  fail_open_url: http://myapp-origin.default.svc
+```
+
+The control plane lives under this prefix on the gateway, but developers do not
+put it in their gateway URL — the client appends the control-plane prefix
+automatically and defaults the scheme to `https`. Hand out the bare host,
+`myapp.example.com`.
+
+Host-based splitting across different domains (serving the control plane on a
+separate subdomain from the app) is planned but not fully implemented; document
+same-domain for now.
+
 ## Self-hosting prerequisites
 
 The chart and `deploy/sidecar-patch.yaml` ship with a placeholder registry,
