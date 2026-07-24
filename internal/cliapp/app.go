@@ -54,7 +54,7 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 
 	var to int
 	claimCmd := &cobra.Command{
-		Use:   "claim --to PORT PATH [PATH...]",
+		Use:   "claim PATH [PATH...] --to PORT",
 		Short: "Claim path(s), open the tunnel, and keep the lease alive (Ctrl+C releases)",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

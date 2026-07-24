@@ -37,13 +37,8 @@ flowchart LR
 
 ## 開發者快速上手
 
-這段流程假設平台端已完成以下準備：
-
-- `tunlease-gateway` 已部署，且你的電腦可以連線。
-- 固定 endpoint 的 workload 已加入 `tunlease-sidecar`。
-- Gateway allowlist 包含你要認領的 path。
-
-若缺少任何一項，請先看[平台部署指南](docs/platform-deployment.zh-TW.md)。
+平台團隊部署好 gateway、你也拿到它的 URL 之後，開發者只需要兩個命令：安裝、再
+claim。若 gateway 還沒架好，請先看[平台部署指南](docs/platform-deployment.zh-TW.md)。
 
 ```bash
 # macOS 與 Linux
@@ -55,41 +50,37 @@ curl -fsSL https://tunlease.example.com/install/install.sh | bash
 irm https://tunlease.example.com/install/install.ps1 | iex
 ```
 
-把 CLI 指向 gateway。不需要 token——staging gateway 未啟用 client 認證：
+接著用一行命令認領 path——用 `--gateway` 指向 gateway，用 `--to` 把 path 轉到本機
+port。Ctrl+C 釋放租約。
 
 ```bash
-# macOS 與 Linux
-cat > ~/.tunlease.yaml <<'YAML'
+tunlease claim /webhooks/provider/callback/* --to 8080 --gateway https://tunlease.example.com
+```
+
+Claim 之後真正的 staging 第三方 callback 會進到你的本機，所以請先啟動本機服務、
+並認領最小範圍的 path。
+
+若不想每次重打 `--gateway`，設成環境變數一次即可：
+
+```bash
+export TUNLEASE_GATEWAY=https://tunlease.example.com
+tunlease claim /webhooks/provider/callback/* --to 8080
+```
+
+或者，若偏好用檔案，放進 `~/.tunlease.yaml`（gateway 需要認證時，`token:` 也寫這裡）：
+
+```yaml
 gateway: https://tunlease.example.com
-YAML
-chmod 600 ~/.tunlease.yaml
 ```
 
-```powershell
-# Windows PowerShell
-@"
-gateway: https://tunlease.example.com
-"@ | Set-Content (Join-Path $HOME ".tunlease.yaml")
-```
-
-若維護者告知 gateway 需要認證，再在 `~/.tunlease.yaml` 加一行
-`token: YOUR_PERSONAL_TOKEN`。先啟動本機服務，再認領最小範圍的 path：
+其餘指令都用同樣的簡短形式：
 
 ```bash
-# 把這個 path 與其子路徑轉到 localhost:8080；Ctrl+C 會釋放租約。
-tunlease claim --to 8080 /webhooks/provider/callback/*
-```
-
-Claim 之後，真正的 staging 第三方 callback 會進到你的本機，所以請先確認本機服務已啟動、並認領最小範圍的 path。
-
-常用指令：
-
-```bash
-tunlease list
-tunlease list --all
-tunlease release /webhooks/provider/callback/*
-tunlease release --to 8080
-tunlease update
+tunlease list                                    # 你目前的 claim
+tunlease list --all                              # gateway 上所有 claim
+tunlease release /webhooks/provider/callback/*   # 釋放某個 path
+tunlease release --to 8080                        # 釋放某個 port 上的全部
+tunlease update                                  # 自我更新 binary
 tunlease --version
 ```
 

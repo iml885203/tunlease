@@ -38,13 +38,9 @@ The safety model combines a path allowlist, exclusive leases with TTLs, optional
 
 ## Quick start for developers
 
-This flow assumes that the platform setup is already complete:
-
-- `tunlease-gateway` is deployed and reachable from your machine.
-- The target endpoint workload includes `tunlease-sidecar`.
-- The gateway allows the path you want to claim.
-
-If any of these are missing, start with the [platform deployment guide](docs/platform-deployment.md).
+Once your platform team has deployed the gateway (and you know its URL), a
+developer needs just two commands: install, then claim. If the gateway isn't
+set up yet, see the [platform deployment guide](docs/platform-deployment.md).
 
 ```bash
 # macOS and Linux
@@ -56,39 +52,38 @@ curl -fsSL https://tunlease.example.com/install/install.sh | bash
 irm https://tunlease.example.com/install/install.ps1 | iex
 ```
 
-Then point the CLI at the gateway. No token is needed — the staging gateway
-runs without client authentication:
+Then claim a path in one command — point it at the gateway with `--gateway`
+and forward the path to a local port with `--to`. Ctrl+C releases it.
 
 ```bash
-cat > ~/.tunlease.yaml <<'YAML'
+tunlease claim /webhooks/provider/callback/* --to 8080 --gateway https://tunlease.example.com
+```
+
+Claims receive real staging callbacks, so start your local service first and
+claim the narrowest path you need.
+
+To avoid repeating `--gateway`, set it once as an environment variable:
+
+```bash
+export TUNLEASE_GATEWAY=https://tunlease.example.com
+tunlease claim /webhooks/provider/callback/* --to 8080
+```
+
+Or, if you prefer a file, put it in `~/.tunlease.yaml` (a `token:` line goes
+here too if the gateway requires authentication):
+
+```yaml
 gateway: https://tunlease.example.com
-YAML
-chmod 600 ~/.tunlease.yaml
 ```
 
-```powershell
-# Windows PowerShell
-@"
-gateway: https://tunlease.example.com
-"@ | Set-Content (Join-Path $HOME ".tunlease.yaml")
-```
+Everything else uses the same short form:
 
 ```bash
-# Forward this path and its children to localhost:8080. Ctrl+C releases it.
-tunlease claim --to 8080 /webhooks/provider/callback/*
-```
-
-If a maintainer tells you the gateway requires authentication, add a
-`token: YOUR_PERSONAL_TOKEN` line to `~/.tunlease.yaml`. Claims receive real
-staging callbacks, so start the local service first and claim the narrowest
-path you need.
-
-```bash
-tunlease list
-tunlease list --all
-tunlease release /webhooks/provider/callback/*
-tunlease release --to 8080
-tunlease update
+tunlease list                                    # your active claims
+tunlease list --all                              # every claim on the gateway
+tunlease release /webhooks/provider/callback/*   # release a path
+tunlease release --to 8080                        # release everything on a port
+tunlease update                                  # self-update the binary
 tunlease --version
 ```
 
