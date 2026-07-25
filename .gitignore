@@ -1,5 +1,6 @@
 /bin/
 /dist/
+/_site/
 config.staging.yaml
 *.test
 .DS_Store
