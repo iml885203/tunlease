@@ -69,8 +69,8 @@ fi
 grep -qi "allowlist\|not allowed" "$TMP/deny.log" || fail "403 message missing: $(cat "$TMP/deny.log")"
 echo "OK: whitelist 403"
 
-# --- claim + tunnel ---
-./bin/tul claim --to $PORT_LOCAL /test/cb > "$TMP/claim.log" 2>&1 &
+# --- recursive claim + tunnel ---
+./bin/tul claim --to $PORT_LOCAL '/test/cb/**' > "$TMP/claim.log" 2>&1 &
 CLAIM_PID=$!
 PIDS+=($CLAIM_PID)
 
@@ -82,7 +82,15 @@ for i in $(seq 1 30); do
 done
 echo "OK: claim → tunnel → local server"
 
-# --- 衝突 → 409（另一個 owner 視角：同 token 也該擋，前綴互蓋）---
+# --- request activity is reported without blocking the response ---
+for i in $(seq 1 20); do
+  grep -q "→ GET /test/cb  200" "$TMP/claim.log" && break
+  [ "$i" = 20 ] && { cat "$TMP/claim.log" "$TMP/gateway.log" >&2; fail "request activity was not reported"; }
+  sleep 0.25
+done
+echo "OK: request activity reported"
+
+# --- recursive glob 與 descendant exact path 衝突 → 409 ---
 if ./bin/tul claim --to $PORT_LOCAL /test/cb/deeper 2> "$TMP/conflict.log"; then
   fail "overlapping claim should fail"
 fi
@@ -104,6 +112,6 @@ echo "$CLAIMS" | grep -q '"claims":\[\]' || fail "claim survived closed tunnel: 
 echo "OK: kill -9 → connection close → claim gone"
 
 # --- release 後 state 清乾淨（release 殘留 state 條目）---
-./bin/tul release /test/cb > /dev/null 2>&1 || true
+./bin/tul release '/test/cb/**' > /dev/null 2>&1 || true
 
 echo "ALL E2E CHECKS PASSED"
