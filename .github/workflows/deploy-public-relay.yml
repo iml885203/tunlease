@@ -42,46 +42,34 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           : "${GH_TOKEN:?set the PUBLIC_RELAY_INFRA_TOKEN repository secret}"
-          jq -n \
-            --arg version "$VERSION" \
-            --arg source_repository "$GITHUB_REPOSITORY" \
-            --arg source_sha "$GITHUB_SHA" \
-            --arg source_run_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
-            --arg deployment_id "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
-            '{
-              event_type: "tunlease-release",
-              client_payload: {
-                version: $version,
-                source_repository: $source_repository,
-                source_sha: $source_sha,
-                source_run_url: $source_run_url,
-                deployment_id: $deployment_id
-              }
-            }' >"$RUNNER_TEMP/public-relay-dispatch.json"
-          gh api \
-            --method POST \
-            repos/iml885203/tunlease-public-relay-infra/dispatches \
-            --input "$RUNNER_TEMP/public-relay-dispatch.json"
+          previous_run_id=$(gh run list \
+            --repo iml885203/tunlease-public-relay-infra \
+            --workflow deploy.yml \
+            --event workflow_dispatch \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId')
 
-      - name: Wait for public relay deployment
-        env:
-          GH_TOKEN: ${{ secrets.PUBLIC_RELAY_INFRA_TOKEN }}
-          VERSION: ${{ inputs.version }}
-        run: |
-          deployment_id="$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          expected_title="Deploy public relay $VERSION ($deployment_id)"
-          run_id=
-          for _ in $(seq 1 60); do
+          gh workflow run deploy.yml \
+            --repo iml885203/tunlease-public-relay-infra \
+            --ref main \
+            -f version="$VERSION"
+
+          for _ in $(seq 1 20); do
             run_id=$(
-              gh api \
-                "repos/iml885203/tunlease-public-relay-infra/actions/workflows/deploy.yml/runs?event=repository_dispatch&per_page=20" \
-                --jq ".workflow_runs[] | select(.display_title == \"$expected_title\") | .id" |
-                head -n 1
+              gh run list \
+                --repo iml885203/tunlease-public-relay-infra \
+                --workflow deploy.yml \
+                --event workflow_dispatch \
+                --limit 1 \
+                --json databaseId \
+                --jq '.[0].databaseId'
             )
-            [ -n "$run_id" ] && break
-            sleep 5
+            [ -n "$run_id" ] && [ "$run_id" != "$previous_run_id" ] && break
+            run_id=
+            sleep 3
           done
-          if [ -z "$run_id" ]; then
+          if [ -z "${run_id:-}" ]; then
             echo "public relay deployment did not start" >&2
             exit 1
           fi
