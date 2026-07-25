@@ -29,6 +29,10 @@ export TUNLEASE_TOKEN=YOUR_TOKEN
 tul claim '/webhooks/provider/callback/*' --to 8080
 ```
 
+不加 wildcard 時只 claim 一條 exact path。`/callback` 與 `/callback/` 等同；
+`/callback/*` 只符合一層子 path segment，`/callback/**` 則符合 callback path
+本身與任意深度的所有子路徑。
+
 Gateway URL 只填 host；client 會加入固定的 `/_tunlease`。預設使用 HTTPS，
 只有本機開發才明確填 `http://`。
 
@@ -48,7 +52,16 @@ Stripe、GitHub、Slack 與 OAuth 範例請見
 `claim` 成功代表 path ownership 與 data tunnel 都已 ready。Foreground
 CLI 會在 claim 前探測本機 port；port 尚未接受連線時會顯示 warning，但不阻止
 claim，讓本機 service 可以稍後啟動。連線期間每次本機連線失敗都會印在
-foreground，或寫入 detached claim log。
+foreground，或寫入 detached claim log。每個 forwarded request 也會顯示一行
+包含 method、path、response status 與 duration 的精簡 activity：
+
+```text
+→ POST /webhooks/provider/callback  200  42ms
+```
+
+Activity 不包含 query string、headers 或 body，避免把 secret 與 webhook
+payload 複製到 terminal output。Detached claim 會把相同 activity 寫入
+`~/.tunlease/claim-PORT.log`。
 process 擁有兩者：Ctrl+C 或連線結束會立即釋放。暫時斷網時會自動重連；
 claim ID 會改變，空窗期間 request 走 origin。
 

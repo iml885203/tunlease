@@ -30,10 +30,42 @@ const (
 	streamRelease  = byte(2)
 	streamAck      = byte(3)
 	streamExpire   = byte(4)
+	streamActivity = byte(5)
 
 	targetUnavailableMessage = "This path is claimed, but its local service is unavailable.\n\n" +
 		"If this is your tunnel, check the terminal running tul."
 )
+
+type activityMessage struct {
+	Method     string `json:"method"`
+	Path       string `json:"path"`
+	Status     int    `json:"status"`
+	DurationMS int64  `json:"duration_ms"`
+}
+
+type activityResponseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *activityResponseWriter) WriteHeader(status int) {
+	if w.status != 0 {
+		return
+	}
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *activityResponseWriter) Write(p []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	return w.ResponseWriter.Write(p)
+}
+
+func (w *activityResponseWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
 
 var errClaimOwner = errors.New("claim belongs to another owner")
 
@@ -188,7 +220,7 @@ func (t *Tunnel) writeClaimError(w http.ResponseWriter, err error) {
 	var tooManyOwner *registry.TooManyOwnerClaims
 	switch {
 	case errors.Is(err, registry.ErrInvalidPath):
-		writeTunnelError(w, http.StatusBadRequest, "invalid_request", "each path must start with /, end with /*, and contain no other wildcard", nil)
+		writeTunnelError(w, http.StatusBadRequest, "invalid_request", "each path must start with /; wildcards are only allowed as trailing /* or /**", nil)
 	case errors.As(err, &conflict):
 		writeTunnelError(w, http.StatusConflict, "path_claimed", "path overlaps an active tunnel", map[string]any{"claimed_by": conflict.Owner})
 	case errors.As(err, &notAllowed):
@@ -329,16 +361,52 @@ func (t *Tunnel) ProxyByPath(w http.ResponseWriter, r *http.Request) bool {
 			http.Error(w, targetUnavailableMessage, http.StatusBadGateway)
 		},
 	}
-	proxy.ServeHTTP(w, r)
+	started := time.Now()
+	recorded := &activityResponseWriter{ResponseWriter: w}
+	proxy.ServeHTTP(recorded, r)
+	if recorded.status == 0 {
+		recorded.status = http.StatusOK
+	}
+	activity := activityMessage{
+		Method:     r.Method,
+		Path:       r.URL.Path,
+		Status:     recorded.status,
+		DurationMS: time.Since(started).Milliseconds(),
+	}
+	go sendActivity(session, activity)
 	return true
 }
 
+func sendActivity(session *yamux.Session, activity activityMessage) {
+	stream, err := session.Open()
+	if err != nil {
+		return
+	}
+	defer func() { _ = stream.Close() }()
+	_ = stream.SetDeadline(time.Now().Add(time.Second))
+	if _, err = stream.Write([]byte{streamActivity}); err != nil {
+		return
+	}
+	_ = json.NewEncoder(stream).Encode(activity)
+}
+
 func (t *Tunnel) matchClaim(path string) (string, bool) {
+	path = strings.TrimRight(path, "/")
+	if path == "" {
+		path = "/"
+	}
 	best, bestLen := "", -1
 	for _, claim := range t.store.List() {
 		for _, pattern := range claim.Paths {
-			base := strings.TrimSuffix(pattern, "/*")
-			if (path == base || strings.HasPrefix(path, base+"/")) && len(base) > bestLen {
+			base := strings.TrimSuffix(strings.TrimSuffix(pattern, "/**"), "/*")
+			matches := path == base && !strings.HasSuffix(pattern, "/*")
+			if strings.HasSuffix(pattern, "/**") {
+				matches = path == base || strings.HasPrefix(path, base+"/")
+			} else if strings.HasSuffix(pattern, "/*") && strings.HasPrefix(path, base+"/") {
+				child := strings.TrimPrefix(path, base+"/")
+				matches = child != "" && !strings.Contains(child, "/")
+			}
+			if matches && len(base) > bestLen {
 				best, bestLen = claim.ID, len(base)
 			}
 		}

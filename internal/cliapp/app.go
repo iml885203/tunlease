@@ -222,9 +222,18 @@ func runClaim(c *tunnelclient.Client, paths []string, to int, daemon bool) error
 				fmt.Printf("paths remain claimed as %s\n", shortID(cl.ID))
 			case tunnelclient.EventLocalTargetError:
 				fmt.Printf("WARNING: request could not reach localhost:%d: %v\n", to, event.Err)
+			case tunnelclient.EventRequestActivity:
+				fmt.Printf("→ %s %s  %d  %s\n", event.Method, event.Path, event.Status, formatActivityDuration(event.Duration))
 			}
 		}
 	}
+}
+
+func formatActivityDuration(duration time.Duration) string {
+	if duration < time.Millisecond {
+		return "<1ms"
+	}
+	return duration.Round(time.Millisecond).String()
 }
 
 func checkLocalTarget(port int) error {

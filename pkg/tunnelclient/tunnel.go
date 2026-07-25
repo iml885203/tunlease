@@ -29,6 +29,7 @@ const (
 	streamRelease  = byte(2)
 	streamAck      = byte(3)
 	streamExpire   = byte(4)
+	streamActivity = byte(5)
 )
 
 var setupTimeout = 10 * time.Second
@@ -43,6 +44,13 @@ type liveTunnel struct {
 	session  *yamux.Session
 	terminal <-chan error
 	events   <-chan Event
+}
+
+type activityMessage struct {
+	Method     string `json:"method"`
+	Path       string `json:"path"`
+	Status     int    `json:"status"`
+	DurationMS int64  `json:"duration_ms"`
 }
 
 func startTunnel(ctx context.Context, client *Client, paths []string, to int) (Claim, <-chan tunnelUpdate, context.CancelFunc, error) {
@@ -278,6 +286,8 @@ func acceptStreams(session *yamux.Session, to int, terminal chan<- error, events
 		switch kind[0] {
 		case streamRequest:
 			go forwardLocal(stream, to, events)
+		case streamActivity:
+			go receiveActivity(stream, events)
 		case streamRelease:
 			if _, err = stream.Write([]byte{streamAck}); err == nil {
 				terminal <- &APIError{
@@ -303,6 +313,27 @@ func acceptStreams(session *yamux.Session, to int, terminal chan<- error, events
 		default:
 			_ = stream.Close()
 		}
+	}
+}
+
+func receiveActivity(stream net.Conn, events chan<- Event) {
+	defer func() { _ = stream.Close() }()
+	var activity activityMessage
+	if err := json.NewDecoder(io.LimitReader(stream, 64<<10)).Decode(&activity); err != nil {
+		return
+	}
+	if activity.Method == "" || activity.Path == "" || activity.Status < 100 || activity.Status > 999 || activity.DurationMS < 0 {
+		return
+	}
+	select {
+	case events <- Event{
+		Type:     EventRequestActivity,
+		Method:   activity.Method,
+		Path:     activity.Path,
+		Status:   activity.Status,
+		Duration: time.Duration(activity.DurationMS) * time.Millisecond,
+	}:
+	default:
 	}
 }
 

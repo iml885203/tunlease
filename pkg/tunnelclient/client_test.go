@@ -50,16 +50,17 @@ func TestClientOmitsAuthorizationWithoutToken(t *testing.T) {
 
 func TestNormalizePath(t *testing.T) {
 	for input, want := range map[string]string{
-		"/callback":   "/callback/*",
-		"/callback/":  "/callback/*",
-		"/callback/*": "/callback/*",
+		"/callback":    "/callback",
+		"/callback/":   "/callback",
+		"/callback/*":  "/callback/*",
+		"/callback/**": "/callback/**",
 	} {
 		got, err := NormalizePath(input)
 		if err != nil || got != want {
 			t.Fatalf("NormalizePath(%q) = %q, %v", input, got, err)
 		}
 	}
-	for _, input := range []string{"callback", "/", "/x/*/y", "/" + strings.Repeat("a", MaxPathLength)} {
+	for _, input := range []string{"callback", "/", "/x/*/y", "/x/**/y", "/" + strings.Repeat("a", MaxPathLength)} {
 		if _, err := NormalizePath(input); err == nil {
 			t.Fatalf("NormalizePath(%q) succeeded", input)
 		}
@@ -136,7 +137,7 @@ func TestStartClaimsThroughTunnelHandshake(t *testing.T) {
 	if !errors.As(err, &apiErr) || apiErr.Code != "path_claimed" {
 		t.Fatalf("Start error = %#v", err)
 	}
-	if pathsHeader != `["/callback/*"]` {
+	if pathsHeader != `["/callback"]` {
 		t.Fatalf("paths header = %q", pathsHeader)
 	}
 }

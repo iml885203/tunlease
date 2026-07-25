@@ -29,14 +29,20 @@ for event := range session.Events() {
         log.Printf("reconnected as %s", event.Claim.ID)
     case tunnelclient.EventLocalTargetError:
         log.Printf("local target unavailable: %v", event.Err)
+    case tunnelclient.EventRequestActivity:
+        log.Printf("%s %s %d %s",
+            event.Method, event.Path, event.Status, event.Duration)
     }
 }
 return session.Err()
 ```
 
 `Start` returns only after the gateway owns the paths and the reverse tunnel is
-routable. It accepts 1–8 paths, each at most 512 bytes. The session owns both
-until `Close` or context cancellation. A
+routable. It accepts 1–8 paths, each at most 512 bytes. A path without `/*`
+or `/**` matches only that exact path (with or without its trailing slash).
+A trailing `/*` matches exactly one child segment; `/**` matches the path
+itself and all descendants at any depth. The session owns the paths until
+`Close` or context cancellation. A
 reconnect receives a new claim ID, available through `session.Claim()`.
 When the gateway limits claim duration, `session.Claim().ExpiresAt` contains
 the deadline and `session.Err()` returns an API error with code
@@ -45,6 +51,9 @@ If a dispatched request cannot connect to the local port, the gateway returns
 `502 This path is claimed, but its local service is unavailable.` and directs
 the owner to the terminal without exposing local details. The session emits
 the best-effort `EventLocalTargetError`; the claim remains connected.
+Each completed request also emits a best-effort `EventRequestActivity` with its
+method, path, response status, and duration. The path excludes the query string;
+headers and bodies are never included.
 
 `Config` supports `Gateway`, `Token`, `DefaultScheme`, `Insecure`, and a custom
 `HTTPClient`. Gateway must be a host or URL without a path; the package appends

@@ -29,6 +29,10 @@ export TUNLEASE_TOKEN=YOUR_TOKEN
 tul claim '/webhooks/provider/callback/*' --to 8080
 ```
 
+Omit a wildcard to claim only one exact path. `/callback` and `/callback/` are
+equivalent. `/callback/*` matches exactly one child segment, while
+`/callback/**` matches the callback path and all descendants at any depth.
+
 The gateway URL is the bare host; the client adds fixed `/_tunlease`. HTTPS is
 the default. Use an explicit `http://` only for local development.
 
@@ -50,7 +54,16 @@ A successful `claim` means path ownership and the data tunnel are both ready.
 Before claiming, the CLI probes the local port. An unavailable port emits a
 warning but does not block the claim, so the local service may start afterward.
 While connected, each failed local connection is printed in the foreground or
-written to the detached claim log.
+written to the detached claim log. Every forwarded request also emits a compact
+activity line with its method, path, response status, and duration:
+
+```text
+→ POST /webhooks/provider/callback  200  42ms
+```
+
+Activity lines deliberately omit the query string, headers, and body so secrets
+and webhook payloads are not copied into terminal output. Detached claims write
+the same activity lines to `~/.tunlease/claim-PORT.log`.
 The foreground process owns them: Ctrl+C or connection close releases them
 immediately. On transient network loss it reconnects automatically; the claim
 ID changes and requests use the origin during the gap.

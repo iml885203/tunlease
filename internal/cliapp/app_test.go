@@ -7,10 +7,25 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
+func TestFormatActivityDuration(t *testing.T) {
+	tests := map[time.Duration]string{
+		0:                       "<1ms",
+		500 * time.Microsecond:  "<1ms",
+		1500 * time.Microsecond: "2ms",
+		1250 * time.Millisecond: "1.25s",
+	}
+	for duration, want := range tests {
+		if got := formatActivityDuration(duration); got != want {
+			t.Errorf("formatActivityDuration(%s) = %q, want %q", duration, got, want)
+		}
+	}
+}
+
 func TestNormalizePath(t *testing.T) {
-	cases := map[string]string{"/webhooks/provider/callback/getbalance": "/webhooks/provider/callback/getbalance/*", "/webhooks/provider/callback/updatebalance": "/webhooks/provider/callback/updatebalance/*", "/x/": "/x/*", "/x/*": "/x/*"}
+	cases := map[string]string{"/webhooks/provider/callback/getbalance": "/webhooks/provider/callback/getbalance", "/webhooks/provider/callback/updatebalance": "/webhooks/provider/callback/updatebalance", "/x/": "/x", "/x/*": "/x/*", "/x/**": "/x/**"}
 	for in, want := range cases {
 		got, e := NormalizePath(in)
 		if e != nil || got != want {
@@ -22,6 +37,9 @@ func TestNormalizePath(t *testing.T) {
 	}
 	if _, e := NormalizePath("/x/*/y"); e == nil {
 		t.Fatal("accepted inner wildcard")
+	}
+	if _, e := NormalizePath("/x/**/y"); e == nil {
+		t.Fatal("accepted inner recursive wildcard")
 	}
 }
 

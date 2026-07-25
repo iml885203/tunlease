@@ -66,11 +66,18 @@ The remaining HTTP API is:
 | Tunnel/local failure after dispatch starts | Return `502 This path is claimed, but its local service is unavailable.`; never replay |
 | Gateway or configured origin unavailable | Platform outage |
 
-Paths must start with `/`, end in `/*`, and not otherwise contain `*`.
-Each path is at most 512 bytes and one session may own at most 8 paths.
-Overlapping prefixes are exclusive. The gateway forwards HTTP method,
-path/query, headers, body, and response; applications must still handle
-provider retries and duplicate delivery.
+Paths must start with `/`. A path without a wildcard is exact; its trailing
+slash is ignored, so `/callback` and `/callback/` are equivalent. A trailing
+`/*` matches exactly one child segment, while `/**` matches the path itself and
+all descendants at any depth. Wildcards are not supported elsewhere. Each path
+is at most 512 bytes and one session may own at most 8 paths. Overlapping claim
+scopes are exclusive. The gateway forwards HTTP method, path/query, headers,
+body, and response; applications must still handle provider retries and
+duplicate delivery.
+After a proxied response completes, the gateway sends a best-effort activity
+event to the owning client on a separate yamux stream. It contains only the
+method, path without query, response status, and duration; activity reporting
+does not block the response or inspect the tunneled HTTP stream.
 
 ## Deployment boundary
 

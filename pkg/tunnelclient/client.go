@@ -69,28 +69,33 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("gateway returned HTTP %d", e.Status)
 }
 
-// NormalizePath validates a callback path and returns Tunlease's canonical
-// trailing-wildcard representation.
+// NormalizePath validates a callback path and removes a trailing slash.
+// A trailing /* matches one child segment; /** matches the whole subtree.
 func NormalizePath(path string) (string, error) {
 	path = strings.TrimSpace(path)
 	if !strings.HasPrefix(path, "/") {
 		return "", errors.New("path must start with /")
 	}
-	if strings.Contains(path, "*") && !strings.HasSuffix(path, "/*") {
-		return "", errors.New("wildcard is only allowed as trailing /*")
+	wildcard := ""
+	switch {
+	case strings.HasSuffix(path, "/**"):
+		wildcard = "/**"
+	case strings.HasSuffix(path, "/*"):
+		wildcard = "/*"
 	}
-	path = strings.TrimSuffix(path, "/*")
-	path = strings.TrimRight(path, "/")
-	if path == "" {
+	base := strings.TrimSuffix(path, wildcard)
+	base = strings.TrimRight(base, "/")
+	if base == "" {
 		return "", errors.New("root path is not allowed")
 	}
-	if strings.Contains(path, "*") {
-		return "", errors.New("wildcard is only allowed as trailing /*")
+	if strings.Contains(base, "*") {
+		return "", errors.New("wildcard is only allowed as trailing /* or /**")
 	}
-	if len(path)+2 > MaxPathLength {
+	length := len(base) + len(wildcard)
+	if length > MaxPathLength {
 		return "", fmt.Errorf("path must be at most %d bytes", MaxPathLength)
 	}
-	return path + "/*", nil
+	return base + wildcard, nil
 }
 
 // EventType identifies a lifecycle change emitted by a Session.
@@ -99,14 +104,19 @@ type EventType string
 const (
 	EventTunnelReconnected EventType = "tunnel_reconnected"
 	EventLocalTargetError  EventType = "local_target_error"
+	EventRequestActivity   EventType = "request_activity"
 )
 
 // Event describes a best-effort, non-terminal lifecycle notification. Slow
 // consumers may miss events; Claim, Done, and Err are authoritative.
 type Event struct {
-	Type  EventType
-	Claim Claim
-	Err   error
+	Type     EventType
+	Claim    Claim
+	Err      error
+	Method   string
+	Path     string
+	Status   int
+	Duration time.Duration
 }
 
 // Session owns one active tunnel and its paths.

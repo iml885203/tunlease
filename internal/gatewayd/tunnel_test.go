@@ -88,3 +88,44 @@ func TestIncompleteTunnelHandshakeReleasesClaim(t *testing.T) {
 		t.Fatalf("incomplete handshake retained claim: %#v", claims)
 	}
 }
+
+func TestMatchClaimDistinguishesExactAndWildcardPaths(t *testing.T) {
+	store := registry.NewMemory(registry.Options{MaxClaims: 64}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	exact, err := store.Create("alice", []string{"/callback"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wildcard, err := store.Create("bob", []string{"/events/*"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	recursive, err := store.Create("carol", []string{"/tree/**"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tunnel := NewTunnel(store, nil)
+
+	for _, path := range []string{"/callback", "/callback/"} {
+		if got, ok := tunnel.matchClaim(path); !ok || got != exact.ID {
+			t.Errorf("matchClaim(%q) = %q, %v", path, got, ok)
+		}
+	}
+	if got, ok := tunnel.matchClaim("/callback/child"); ok {
+		t.Errorf("exact claim matched descendant as %q", got)
+	}
+	for _, path := range []string{"/events/one", "/events/two/"} {
+		if got, ok := tunnel.matchClaim(path); !ok || got != wildcard.ID {
+			t.Errorf("matchClaim(%q) = %q, %v", path, got, ok)
+		}
+	}
+	for _, path := range []string{"/events", "/events/", "/events/one/two"} {
+		if got, ok := tunnel.matchClaim(path); ok {
+			t.Errorf("single-level wildcard matched %q as %q", path, got)
+		}
+	}
+	for _, path := range []string{"/tree", "/tree/", "/tree/one", "/tree/one/two"} {
+		if got, ok := tunnel.matchClaim(path); !ok || got != recursive.ID {
+			t.Errorf("matchClaim(%q) = %q, %v", path, got, ok)
+		}
+	}
+}

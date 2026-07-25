@@ -77,6 +77,7 @@ func TestClaimExpiresAtGatewayLimit(t *testing.T) {
 
 func TestSessionDataPathFallbackAndClose(t *testing.T) {
 	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
 		fmt.Fprintf(w, "local: %s", r.URL.Path)
 	}))
 	defer local.Close()
@@ -96,8 +97,22 @@ func TestSessionDataPathFallbackAndClose(t *testing.T) {
 	if session.Claim().Owner != "anonymous" {
 		t.Fatalf("owner = %q", session.Claim().Owner)
 	}
-	if body := get(t, gateway.http, "/test/anonymous/hook"); body != "local: /test/anonymous/hook" {
+	if body := get(t, gateway.http, "/test/anonymous/hook?secret=do-not-log"); body != "local: /test/anonymous/hook" {
 		t.Fatalf("tunnelled body = %q", body)
+	}
+	select {
+	case event := <-session.Events():
+		if event.Type != tunnelclient.EventRequestActivity {
+			t.Fatalf("event type = %q", event.Type)
+		}
+		if event.Method != http.MethodGet || event.Path != "/test/anonymous/hook" || event.Status != http.StatusAccepted {
+			t.Fatalf("activity event = %#v", event)
+		}
+		if strings.Contains(event.Path, "secret") || event.Duration < 0 {
+			t.Fatalf("unsafe or invalid activity event = %#v", event)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("request activity event was not emitted")
 	}
 	if body := get(t, gateway.http, "/unclaimed"); body != "origin: /unclaimed" {
 		t.Fatalf("origin body = %q", body)
@@ -129,7 +144,7 @@ func TestUnavailableLocalTargetReturnsDescriptiveBadGatewayAndEvent(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, err := client.Start(context.Background(), []string{"/test/unavailable"}, port)
+	session, err := client.Start(context.Background(), []string{"/test/unavailable/*"}, port)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,16 +168,20 @@ func TestUnavailableLocalTargetReturnsDescriptiveBadGatewayAndEvent(t *testing.T
 		t.Fatalf("body = %q", body)
 	}
 
-	select {
-	case event := <-session.Events():
-		if event.Type != tunnelclient.EventLocalTargetError {
-			t.Fatalf("event type = %q", event.Type)
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case event := <-session.Events():
+			if event.Type != tunnelclient.EventLocalTargetError {
+				continue
+			}
+			if event.Err == nil || !strings.Contains(event.Err.Error(), "127.0.0.1") {
+				t.Fatalf("event error = %v", event.Err)
+			}
+			return
+		case <-deadline:
+			t.Fatal("local target failure event was not emitted")
 		}
-		if event.Err == nil || !strings.Contains(event.Err.Error(), "127.0.0.1") {
-			t.Fatalf("event error = %v", event.Err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("local target failure event was not emitted")
 	}
 }
 
@@ -178,7 +197,7 @@ func TestSessionReconnectReplacesClaim(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, err := client.Start(context.Background(), []string{"/test/reconnect"}, mustPort(t, local.URL))
+	session, err := client.Start(context.Background(), []string{"/test/reconnect/*"}, mustPort(t, local.URL))
 	if err != nil {
 		t.Fatal(err)
 	}

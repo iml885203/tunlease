@@ -74,7 +74,7 @@ func TestConflictAndClaimLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	var conflict *Conflict
-	if _, err := store.Create("bob", []string{"/a/b/*"}, ""); !errors.As(err, &conflict) {
+	if _, err := store.Create("bob", []string{"/a/b"}, ""); !errors.As(err, &conflict) {
 		t.Fatalf("expected Conflict, got %v", err)
 	}
 	var tooMany *TooManyClaims
@@ -105,14 +105,63 @@ func TestValidPath(t *testing.T) {
 		want bool
 	}{
 		{"/a/*", true},
+		{"/a/**", true},
+		{"/a", true},
 		{"a/*", false},
-		{"/a", false},
+		{"/a/", false},
 		{"/a/*/b/*", false},
+		{"/a/**/b", false},
 		{"/*", false},
+		{"/**", false},
 		{"/" + strings.Repeat("a", MaxPathLength) + "/*", false},
 	} {
 		if got := ValidPath(tt.path); got != tt.want {
 			t.Errorf("ValidPath(%q)=%v", tt.path, got)
+		}
+	}
+}
+
+func TestExactAndWildcardConflicts(t *testing.T) {
+	store := testMemory(64, nil)
+	if _, err := store.Create("alice", []string{"/a"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Create("bob", []string{"/a/b"}, ""); err != nil {
+		t.Fatalf("sibling exact path should not conflict: %v", err)
+	}
+	var conflict *Conflict
+	if _, err := store.Create("bob", []string{"/a/*"}, ""); !errors.As(err, &conflict) {
+		t.Fatalf("wildcard should conflict with exact descendants, got %v", err)
+	}
+}
+
+func TestSingleLevelAndRecursiveWildcardConflicts(t *testing.T) {
+	store := testMemory(64, nil)
+	if _, err := store.Create("alice", []string{"/a/*"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Create("bob", []string{"/a/b/c"}, ""); err != nil {
+		t.Fatalf("single-level wildcard should not conflict with a grandchild: %v", err)
+	}
+	separateLevels := testMemory(64, nil)
+	if _, err := separateLevels.Create("alice", []string{"/a/*"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := separateLevels.Create("bob", []string{"/a/b/*"}, ""); err != nil {
+		t.Fatalf("single-level wildcards at different depths should not conflict: %v", err)
+	}
+	var conflict *Conflict
+	if _, err := separateLevels.Create("bob", []string{"/a/b/**"}, ""); !errors.As(err, &conflict) {
+		t.Fatalf("recursive subtree should conflict at its root, got %v", err)
+	}
+
+	recursive := testMemory(64, nil)
+	if _, err := recursive.Create("alice", []string{"/tree/**"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/tree", "/tree/child", "/tree/child/*", "/tree/child/**"} {
+		if _, err := recursive.Create("bob", []string{path}, ""); !errors.As(err, &conflict) {
+			t.Errorf("%s should overlap recursive claim, got %v", path, err)
 		}
 	}
 }

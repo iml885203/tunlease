@@ -62,10 +62,16 @@ gateway 送出 terminal expiry control frame、等待 client ACK、關閉 sessio
 | Dispatch 後 tunnel/local 失敗 | 回 `502 This path is claimed, but its local service is unavailable.`；不 replay |
 | Gateway 或設定的 origin unavailable | 平台 outage |
 
-Path 必須以 `/` 開頭、`/*` 結尾，且不可有其他 `*`；每條最多 512 bytes，
-一個 session 最多 8 條，重疊 prefix 互斥。
-Gateway 傳送 HTTP method、path/query、headers、body 與 response；app 仍須處理
+Path 必須以 `/` 開頭。不含 wildcard 的 path 是 exact；結尾的 slash 會被忽略，
+因此 `/callback` 與 `/callback/` 等同。結尾 `/*` 只符合一層子 path segment；
+`/**` 則符合該 path 本身與任意深度的所有子路徑。其他位置不支援 wildcard。
+每條最多 512 bytes，一個 session 最多 8 條，重疊的 claim 範圍互斥。Gateway
+傳送 HTTP method、path/query、headers、body 與 response；app 仍須處理
 provider retry 與重複 delivery。
+Proxied response 完成後，gateway 會透過獨立 yamux stream，將 best-effort
+activity event 送給 owner client。內容只有 method、不含 query 的 path、
+response status 與 duration；activity reporting 不會阻塞 response，也不會
+解析 tunneled HTTP stream。
 
 ## 部署邊界
 

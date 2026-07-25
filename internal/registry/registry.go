@@ -93,26 +93,81 @@ func NewMemory(options Options, logger *slog.Logger) *Memory {
 }
 
 func ValidPath(path string) bool {
+	base := pathBase(path)
 	return strings.HasPrefix(path, "/") &&
-		strings.HasSuffix(path, "/*") &&
-		len(path) > 2 &&
+		base != "" &&
+		base != "/" &&
 		len(path) <= MaxPathLength &&
-		!strings.Contains(strings.TrimSuffix(path, "/*"), "*")
+		!strings.HasSuffix(path, "/") &&
+		!strings.Contains(base, "*")
 }
 
-func prefix(path string) string { return strings.TrimSuffix(path, "*") }
+type pathKind uint8
+
+const (
+	exactPath pathKind = iota
+	singleLevelPath
+	recursivePath
+)
+
+func splitPath(path string) (string, pathKind) {
+	if strings.HasSuffix(path, "/**") {
+		return strings.TrimSuffix(path, "/**"), recursivePath
+	}
+	if strings.HasSuffix(path, "/*") {
+		return strings.TrimSuffix(path, "/*"), singleLevelPath
+	}
+	return path, exactPath
+}
+
+func pathBase(path string) string {
+	base, _ := splitPath(path)
+	return base
+}
 
 func pathSegments(path string) int {
-	trimmed := strings.TrimSuffix(strings.TrimPrefix(path, "/"), "/*")
+	trimmed := strings.TrimPrefix(pathBase(path), "/")
 	if trimmed == "" {
 		return 0
 	}
 	return len(strings.Split(trimmed, "/"))
 }
 
+func matches(pattern, path string) bool {
+	base, kind := splitPath(pattern)
+	switch kind {
+	case recursivePath:
+		return path == base || strings.HasPrefix(path, base+"/")
+	case singleLevelPath:
+		if !strings.HasPrefix(path, base+"/") {
+			return false
+		}
+		child := strings.TrimPrefix(path, base+"/")
+		return child != "" && !strings.Contains(child, "/")
+	default:
+		return path == base
+	}
+}
+
 func overlap(a, b string) bool {
-	return strings.HasPrefix(prefix(a), prefix(b)) ||
-		strings.HasPrefix(prefix(b), prefix(a))
+	aBase, aKind := splitPath(a)
+	bBase, bKind := splitPath(b)
+	if aKind == exactPath {
+		return matches(b, aBase)
+	}
+	if bKind == exactPath {
+		return matches(a, bBase)
+	}
+	if aKind == recursivePath && bKind == recursivePath {
+		return matches(a, bBase) || matches(b, aBase)
+	}
+	if aKind == singleLevelPath && bKind == singleLevelPath {
+		return aBase == bBase
+	}
+	if aKind == recursivePath {
+		return matches(a, bBase) || matches(b, aBase)
+	}
+	return matches(b, aBase) || matches(a, bBase)
 }
 
 func (m *Memory) Create(owner string, paths []string, local string) (Claim, error) {
@@ -131,7 +186,7 @@ func (m *Memory) Create(owner string, paths []string, local string) (Claim, erro
 		}
 		allowed := len(m.allowed) == 0
 		for _, candidate := range m.allowed {
-			if strings.HasPrefix(prefix(path), candidate) {
+			if strings.HasPrefix(pathBase(path)+"/", candidate) {
 				allowed = true
 				break
 			}

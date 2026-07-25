@@ -29,14 +29,19 @@ for event := range session.Events() {
         log.Printf("reconnected as %s", event.Claim.ID)
     case tunnelclient.EventLocalTargetError:
         log.Printf("local target unavailable: %v", event.Err)
+    case tunnelclient.EventRequestActivity:
+        log.Printf("%s %s %d %s",
+            event.Method, event.Path, event.Status, event.Duration)
     }
 }
 return session.Err()
 ```
 
 `Start` 只在 gateway 已擁有 paths 且 reverse tunnel 可路由後返回；可傳 1–8
-條 path，每條最多 512 bytes。Session 持有兩者，直到 `Close` 或 context
-cancellation。重連會取得新 claim ID，
+條 path，每條最多 512 bytes。不含 `/*` 或 `/**` 的 path 只符合 exact path
+（結尾 slash 有無皆可）；結尾 `/*` 只符合一層子 path segment，`/**` 則符合
+該 path 本身與任意深度的所有子路徑。Session 持有 paths，直到 `Close` 或
+context cancellation。重連會取得新 claim ID，
 可由 `session.Claim()` 讀取。
 Gateway 限制 claim duration 時，`session.Claim().ExpiresAt` 會包含 deadline；
 terminal expiry handshake 後，`session.Err()` 會回傳 code 為
@@ -45,6 +50,9 @@ Dispatch 後若無法連到 local port，gateway 會回
 `502 This path is claimed, but its local service is unavailable.`，只引導
 owner 查看 terminal，不暴露本機細節。Session 也會送出 best-effort
 `EventLocalTargetError`；claim 會保持 connected。
+每個完成的 request 也會送出 best-effort `EventRequestActivity`，包含 method、
+path、response status 與 duration。Path 不含 query string，也不會包含 headers
+或 body。
 
 `Config` 支援 `Gateway`、`Token`、`DefaultScheme`、`Insecure` 與 custom
 `HTTPClient`。Gateway 必須是無 path 的 host 或 URL；package 會加入固定
