@@ -6,13 +6,14 @@ in the README.
 ## Publish a release
 
 1. Start from a clean `main` branch with CI passing.
-2. Choose a semantic version such as `v0.2.0`.
+2. Choose the next semantic version.
 3. Confirm user-facing documentation and its paired `*.zh-TW.md` files agree.
 4. Create and push an annotated tag:
 
    ```bash
-   git tag -a v0.2.0 -m "v0.2.0"
-   git push origin v0.2.0
+   VERSION=vX.Y.Z # replace with the version being published
+   git tag -a "$VERSION" -m "$VERSION"
+   git push origin "$VERSION"
    ```
 
 The tag workflow validates the version, runs tests and lint, publishes
@@ -22,9 +23,10 @@ CLI binaries and SHA-256 files.
 Verify the completed release:
 
 ```bash
+VERSION=vX.Y.Z # use the version just published
 gh run list --limit 5
-gh release view v0.2.0
-docker pull ghcr.io/iml885203/tunlease-gateway:v0.2.0
+gh release view "$VERSION"
+docker pull "ghcr.io/iml885203/tunlease-gateway:$VERSION"
 ```
 
 Do not move or replace a published version tag. Publish a new patch release
@@ -50,8 +52,9 @@ succeeds:
    tap checkout:
 
    ```bash
+   VERSION=vX.Y.Z # use the version just published
    curl -fsSL \
-     https://github.com/iml885203/tunlease/archive/refs/tags/v0.2.0.tar.gz |
+     "https://github.com/iml885203/tunlease/archive/refs/tags/$VERSION.tar.gz" |
      shasum -a 256
    ```
 

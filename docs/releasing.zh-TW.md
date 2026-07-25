@@ -5,13 +5,14 @@
 ## 發布 release
 
 1. 從乾淨且 CI 通過的 `main` branch 開始。
-2. 選擇如 `v0.2.0` 的 semantic version。
+2. 選擇下一個 semantic version。
 3. 確認所有 user-facing 文件及其成對的 `*.zh-TW.md` 內容一致。
 4. 建立並推送 annotated tag：
 
    ```bash
-   git tag -a v0.2.0 -m "v0.2.0"
-   git push origin v0.2.0
+   VERSION=vX.Y.Z # 替換為要發布的版本
+   git tag -a "$VERSION" -m "$VERSION"
+   git push origin "$VERSION"
    ```
 
 Tag workflow 會驗證版本、執行測試與 lint、將 multi-architecture gateway
@@ -21,9 +22,10 @@ Release。
 驗證已完成的 release：
 
 ```bash
+VERSION=vX.Y.Z # 使用剛發布的版本
 gh run list --limit 5
-gh release view v0.2.0
-docker pull ghcr.io/iml885203/tunlease-gateway:v0.2.0
+gh release view "$VERSION"
+docker pull "ghcr.io/iml885203/tunlease-gateway:$VERSION"
 ```
 
 不要移動或取代已發布的 version tag；請發布新的 patch release。
@@ -46,8 +48,9 @@ Review macOS 與 Linux test run 後再 merge。
 2. 計算 immutable source archive 的 checksum，且不在 tap checkout 留下檔案：
 
    ```bash
+   VERSION=vX.Y.Z # 使用剛發布的版本
    curl -fsSL \
-     https://github.com/iml885203/tunlease/archive/refs/tags/v0.2.0.tar.gz |
+     "https://github.com/iml885203/tunlease/archive/refs/tags/$VERSION.tar.gz" |
      shasum -a 256
    ```
 

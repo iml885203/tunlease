@@ -87,5 +87,11 @@ Upgrade with Homebrew:
 brew upgrade tunlease
 ```
 
+Upgrade with Scoop:
+
+```powershell
+scoop update tunlease
+```
+
 For a direct installation, run the installer again. Set `TUNLEASE_BASE_URL`
 only when installing from a release mirror.

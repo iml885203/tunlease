@@ -82,5 +82,11 @@ credential 與個資。Local handler 必須 idempotent：provider retry 或 disp
 brew upgrade tunlease
 ```
 
+使用 Scoop 更新：
+
+```powershell
+scoop update tunlease
+```
+
 直接安裝的使用者可重新執行 installer。只有從 release mirror 安裝時才設定
 `TUNLEASE_BASE_URL`。

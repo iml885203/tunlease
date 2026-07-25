@@ -60,7 +60,14 @@ Gateway、Ingress 與 origin outage 需另外規劃 infrastructure 或 bypass。
 brew install iml885203/tap/tunlease
 ```
 
-或安裝最新且經過驗證的 binary：
+Windows 使用 Scoop 安裝：
+
+```powershell
+scoop bucket add tunlease https://github.com/iml885203/scoop-bucket
+scoop install tunlease
+```
+
+也可直接安裝最新且經過驗證的 binary：
 
 ```bash
 # macOS 與 Linux
@@ -70,6 +77,12 @@ curl -fsSL https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/ins
 ```powershell
 # Windows PowerShell（amd64）
 irm https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/install.ps1 | iex
+```
+
+Claim 前可先檢查 local service、gateway、authentication 與 path：
+
+```bash
+tunle doctor /webhooks/provider/callback/* --to 8080 --gateway myapp.example.com
 ```
 
 接著 claim callback path：
@@ -95,6 +108,7 @@ Installer 會在更換 binary 前驗證發布的 SHA-256 checksum。
 | 命令 | 執行於 | 職責 |
 |---|---|---|
 | `tunle claim`（及 `list` / `release`） | 開發者電腦 | 把一條 path 連到本機服務 |
+| `tunle doctor` | 開發者電腦 | Claim 前檢查 local service、gateway、authentication 與 path |
 | `tunle gateway` | 前置於 app | 管理 active path、終止 tunnel、路由 request 並 proxy 到原 app |
 
 Gateway 位於 app 前面，並包辦 server 端所有事情。它把 control plane 放在
@@ -132,6 +146,7 @@ make e2e        # gateway + origin app + local app + 真實 CLI
 ## 依角色閱讀
 
 - **要接第三方 callback 的開發者：**[開發者指南](docs/developer-guide.zh-TW.md)——安裝、設定、CLI 與疑難排解（[English](docs/developer-guide.md)）
+- **要整合 provider 的開發者：**[Webhook recipes](docs/webhook-recipes.zh-TW.md)——Stripe、GitHub、Slack 與 OAuth 範例（[English](docs/webhook-recipes.md)）
 - **平台與 service owner：**[平台部署指南](docs/platform-deployment.zh-TW.md)——whole-host routing、必填 origin、Helm、rollout 與安全（[English](docs/platform-deployment.md)）
 - **要理解或修改系統的貢獻者：**[架構](docs/architecture.zh-TW.md)——control/data plane、routing 與復原流程（[English](docs/architecture.md)）
 - **要在 Go 應用程式嵌入 tunnel 的開發者：**[嵌入 Go client](docs/go-client.zh-TW.md)——module 設定、lifecycle API、錯誤與測試（[English](docs/go-client.md)）

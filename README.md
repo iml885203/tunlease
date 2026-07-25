@@ -65,7 +65,14 @@ optional token, install the CLI:
 brew install iml885203/tap/tunlease
 ```
 
-Or install the latest verified binary:
+On Windows, install with Scoop:
+
+```powershell
+scoop bucket add tunlease https://github.com/iml885203/scoop-bucket
+scoop install tunlease
+```
+
+Or install the latest verified binary directly:
 
 ```bash
 # macOS and Linux
@@ -75,6 +82,13 @@ curl -fsSL https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/ins
 ```powershell
 # Windows PowerShell (amd64)
 irm https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/install.ps1 | iex
+```
+
+Optionally check the local service, gateway, authentication, and path before
+claiming:
+
+```bash
+tunle doctor /webhooks/provider/callback/* --to 8080 --gateway myapp.example.com
 ```
 
 Then claim the callback path:
@@ -103,6 +117,7 @@ It is all one `tunle` binary; a subcommand selects the role:
 | Command | Runs on | Responsibility |
 |---|---|---|
 | `tunle claim` (also `list` / `release`) | Developer machine | Connect a path to a local service |
+| `tunle doctor` | Developer machine | Check the local service, gateway, authentication, and path before claiming |
 | `tunle gateway` | In front of the app | Own active paths, terminate tunnels, route requests, and proxy to the original app |
 
 The gateway sits in front of the app and does everything on the server side. It
@@ -151,6 +166,7 @@ make e2e     # gateway + origin app + local app + real CLI
 Choose the shortest path for your role:
 
 - **Developer receiving callbacks:** [Developer guide](docs/developer-guide.md) — installation, configuration, CLI usage, and troubleshooting ([繁中](docs/developer-guide.zh-TW.md))
+- **Developer integrating a provider:** [Webhook recipes](docs/webhook-recipes.md) — Stripe, GitHub, Slack, and OAuth examples ([繁中](docs/webhook-recipes.zh-TW.md))
 - **Platform and service owners:** [Platform deployment guide](docs/platform-deployment.md) — whole-host routing, required origin, Helm, rollout, and security ([繁中](docs/platform-deployment.zh-TW.md))
 - **Contributor understanding the system:** [Architecture](docs/architecture.md) — control/data planes, routing, lifecycle, and recovery ([繁中](docs/architecture.zh-TW.md))
 - **Go application author:** [Embedding the Go client](docs/go-client.md) — module setup, lifecycle API, errors, and testing ([繁中](docs/go-client.zh-TW.md))
