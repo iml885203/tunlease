@@ -85,9 +85,11 @@ or a tunnel failure after dispatch can duplicate delivery.
   and released its paths.
 - **Origin receives the request** — confirm the claim process is connected,
   the path matches, and the local port accepts HTTP.
-- **`502 claimed tunnel target unavailable`** — the path is claimed, but the
-  client could not connect to the configured localhost port. Start the local
-  service and inspect the foreground output or `~/.tunlease/claim-PORT.log`.
+- **`502 This path is claimed, but its local service is unavailable.`** — the
+  client could not connect to the configured localhost port. The public
+  response directs the tunnel owner to the terminal without exposing local
+  details; start the service and inspect the foreground output or
+  `~/.tunlease/claim-PORT.log`.
 - **TLS error** — install the internal CA; use `--insecure` only as a temporary
   trusted-network diagnostic.
 - **Gateway path rejected** — pass only a host or origin URL, without

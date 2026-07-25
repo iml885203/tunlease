@@ -63,7 +63,7 @@ The remaining HTTP API is:
 |---|---|
 | Path matches a connected session | Send through yamux to localhost |
 | No matching connected session | Proxy to the origin, or return the configured error |
-| Tunnel/local failure after dispatch starts | Return `502 claimed tunnel target unavailable`; never replay |
+| Tunnel/local failure after dispatch starts | Return `502 This path is claimed, but its local service is unavailable.`; never replay |
 | Gateway or configured origin unavailable | Platform outage |
 
 Paths must start with `/`, end in `/*`, and not otherwise contain `*`.

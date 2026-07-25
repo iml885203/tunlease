@@ -30,6 +30,9 @@ const (
 	streamRelease  = byte(2)
 	streamAck      = byte(3)
 	streamExpire   = byte(4)
+
+	targetUnavailableMessage = "This path is claimed, but its local service is unavailable.\n\n" +
+		"If this is your tunnel, check the terminal running tunle."
 )
 
 var errClaimOwner = errors.New("claim belongs to another owner")
@@ -323,7 +326,7 @@ func (t *Tunnel) ProxyByPath(w http.ResponseWriter, r *http.Request) bool {
 			DisableCompression: true,
 		},
 		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, _ error) {
-			http.Error(w, "claimed tunnel target unavailable", http.StatusBadGateway)
+			http.Error(w, targetUnavailableMessage, http.StatusBadGateway)
 		},
 	}
 	proxy.ServeHTTP(w, r)

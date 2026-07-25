@@ -80,9 +80,10 @@ credential 與個資。Local handler 必須 idempotent：provider retry 或 disp
 - **`claim_expired`**：gateway 的 `max_claim_duration` 已終止 session 並釋放
   paths。
 - **Request 到 origin**：確認 claim process 已連線、path 相符、本機 port 可回 HTTP。
-- **`502 claimed tunnel target unavailable`**：path 已被 claim，但 client 無法連到
-  設定的 localhost port。啟動本機 service，並檢查 foreground output 或
-  `~/.tunlease/claim-PORT.log`。
+- **`502 This path is claimed, but its local service is unavailable.`**：path
+  已被 claim，但 client 無法連到設定的 localhost port。公開 response 只引導
+  tunnel owner 查看 terminal，不暴露本機細節；啟動本機 service，並檢查
+  foreground output 或 `~/.tunlease/claim-PORT.log`。
 - **TLS error**：安裝 internal CA；`--insecure` 只作可信網路的暫時診斷。
 - **Gateway path 被拒絕**：只傳 host 或 origin URL，不要附 `/_tunlease`。
 
