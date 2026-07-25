@@ -1,0 +1,72 @@
+name: Sync Homebrew
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Released semantic version tag
+        required: true
+        type: string
+    secrets:
+      HOMEBREW_TAP_TOKEN:
+        description: Fine-grained token for the homebrew-tap Actions API
+        required: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Released semantic version tag to verify
+        required: true
+        type: string
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch tap updater and wait for completion
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          previous_run_id=$(gh run list \
+            --repo iml885203/homebrew-tap \
+            --workflow update.yml \
+            --event workflow_dispatch \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId')
+
+          gh workflow run update.yml \
+            --repo iml885203/homebrew-tap \
+            --ref main
+
+          for _ in $(seq 1 20); do
+            run_id=$(gh run list \
+              --repo iml885203/homebrew-tap \
+              --workflow update.yml \
+              --event workflow_dispatch \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId')
+            [ -n "$run_id" ] && [ "$run_id" != "$previous_run_id" ] && break
+            run_id=
+            sleep 3
+          done
+          [ -n "${run_id:-}" ] || {
+            echo "Homebrew tap updater did not start" >&2
+            exit 1
+          }
+
+          gh run watch "$run_id" \
+            --repo iml885203/homebrew-tap \
+            --exit-status
+
+          formula_version=$(gh api \
+            repos/iml885203/homebrew-tap/contents/Formula/tunlease.rb \
+            --jq '.content' |
+            base64 --decode |
+            sed -nE 's|.*tags/v([^/]+)\.tar\.gz.*|\1|p')
+          if [ "v$formula_version" != "$VERSION" ]; then
+            echo "Homebrew formula is v$formula_version, expected $VERSION" >&2
+            exit 1
+          fi
+          echo "Homebrew formula updated to $VERSION" >>"$GITHUB_STEP_SUMMARY"

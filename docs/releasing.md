@@ -23,6 +23,8 @@ fine-grained personal access token restricted to `iml885203/homebrew-tap` with
 repository permissions `Actions: Read and write` and `Contents: Read`. The tap
 updater uses its own repository-scoped `GITHUB_TOKEN` to update and merge the
 formula; the cross-repository token only dispatches and observes that workflow.
+The **Sync Homebrew** workflow can be run manually with an existing release
+version to verify the token or recover without publishing another release.
 
 Pushing a valid annotated tag manually remains a recovery path; tag CI uses
 the same reusable artifact workflow.
