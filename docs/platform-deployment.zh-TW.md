@@ -1,4 +1,4 @@
-# 平台部署
+# 自行架設 Tunlease
 
 [English](platform-deployment.md) · [繁體中文](platform-deployment.zh-TW.md)
 

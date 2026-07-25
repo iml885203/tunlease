@@ -69,7 +69,7 @@ func TestPrintExpectedTerminal(t *testing.T) {
 	if err := finishTerminalSession(newConsole(&textOut, &textErr), expiryErr, claim); err != nil {
 		t.Fatalf("finishTerminalSession() = %v", err)
 	}
-	if got, want := textOut.String(), "Claim expired at 21:30:00; tunnel closed.\n"; got != want {
+	if got, want := textOut.String(), "Claim expired at 21:30:00.\n"; got != want {
 		t.Fatalf("text expiry = %q, want %q", got, want)
 	}
 	if textErr.Len() != 0 {
@@ -99,7 +99,7 @@ func TestPrintExpectedTerminal(t *testing.T) {
 	); err != nil {
 		t.Fatalf("released finishTerminalSession() = %v", err)
 	}
-	if got, want := releasedOut.String(), "Claim released; tunnel closed.\n"; got != want {
+	if got, want := releasedOut.String(), "Released.\n"; got != want {
 		t.Fatalf("released text = %q, want %q", got, want)
 	}
 
@@ -401,7 +401,7 @@ func TestReleaseByPortPersistsSuccessBeforePartialFailure(t *testing.T) {
 	if len(claims) != 2 || claims[0].ClaimID != "fail" || claims[1].ClaimID != "other-gateway" {
 		t.Fatalf("persisted claims = %#v", claims)
 	}
-	if !strings.Contains(out.String(), "released /ok") || !strings.Contains(out.String(), "released /ok2") {
+	if !strings.Contains(out.String(), "Released: /ok") || !strings.Contains(out.String(), "Released: /ok2") {
 		t.Fatalf("stdout = %q", out.String())
 	}
 }
@@ -450,7 +450,7 @@ func TestReleaseMissingPathIsIdempotent(t *testing.T) {
 	if err = runRelease(newConsole(&out, &stderr), context.Background(), client, []string{"/missing"}, 0); err != nil {
 		t.Fatalf("runRelease() = %v", err)
 	}
-	if !strings.Contains(out.String(), "no active claim found for /missing") || stderr.Len() != 0 {
+	if !strings.Contains(out.String(), "No active claim: /missing") || stderr.Len() != 0 {
 		t.Fatalf("stdout=%q stderr=%q", out.String(), stderr.String())
 	}
 }
@@ -486,7 +486,7 @@ func TestReleaseStaleLocalStateIsIdempotent(t *testing.T) {
 			if len(loadState().Claims) != 0 {
 				t.Fatalf("stale state remains: %#v", loadState().Claims)
 			}
-			if !strings.Contains(out.String(), "already released /stale") || stderr.Len() != 0 {
+			if !strings.Contains(out.String(), "Already released: /stale") || stderr.Len() != 0 {
 				t.Fatalf("stdout=%q stderr=%q", out.String(), stderr.String())
 			}
 		})
@@ -593,7 +593,7 @@ func TestReleaseRemoteLookupRaceIsIdempotent(t *testing.T) {
 	if err = runRelease(newConsole(&out, &stderr), context.Background(), client, []string{"/gone"}, 0); err != nil {
 		t.Fatalf("runRelease() = %v", err)
 	}
-	if !strings.Contains(out.String(), "no active claim found for /gone") || stderr.Len() != 0 {
+	if !strings.Contains(out.String(), "No active claim: /gone") || stderr.Len() != 0 {
 		t.Fatalf("stdout=%q stderr=%q", out.String(), stderr.String())
 	}
 }

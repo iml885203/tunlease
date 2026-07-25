@@ -91,7 +91,7 @@ tul claim '/demo/testing/my-first-tunnel/' --to 8080 --gateway tunlease.dotw.me
 ```
 
 Ctrl+C releases it. To use your own fixed callback host instead of the public
-demo, see the [platform deployment guide](docs/platform-deployment.md).
+demo, see [Self-hosting Tunlease](docs/platform-deployment.md).
 
 Use the public demo only with test traffic. Claims on your own staging gateway
 receive real callbacks, including their data and credentials. Start your local
@@ -158,9 +158,8 @@ make e2e     # gateway + origin app + local app + real CLI
 
 Choose the shortest path for your role:
 
-- **Developer receiving callbacks:** [Developer guide](docs/developer-guide.md) — installation, configuration, CLI usage, and troubleshooting ([繁中](docs/developer-guide.zh-TW.md))
-- **Developer integrating a provider:** [Webhook recipes](docs/webhook-recipes.md) — Stripe, GitHub, Slack, and OAuth examples ([繁中](docs/webhook-recipes.zh-TW.md))
-- **Platform and service owners:** [Platform deployment guide](docs/platform-deployment.md) — whole-host routing, required origin, Helm, rollout, and security ([繁中](docs/platform-deployment.zh-TW.md))
+- **Developer receiving callbacks or integrating a provider:** [Developer guide](docs/developer-guide.md) — installation, provider security, configuration, CLI usage, and troubleshooting ([繁中](docs/developer-guide.zh-TW.md))
+- **Self-hosting Tunlease:** [Deployment guide](docs/platform-deployment.md) — gateway setup, routing, Helm, rollout, and security ([繁中](docs/platform-deployment.zh-TW.md))
 - **Contributor understanding the system:** [Architecture](docs/architecture.md) — control/data planes, routing, lifecycle, and recovery ([繁中](docs/architecture.zh-TW.md))
 - **Go application author:** [Embedding the Go client](docs/go-client.md) — module setup, lifecycle API, errors, and testing ([繁中](docs/go-client.zh-TW.md))
 

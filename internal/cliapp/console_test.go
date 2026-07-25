@@ -16,7 +16,7 @@ func TestConsolePlainOutputHasSemanticMarkersAndNoANSI(t *testing.T) {
 	ui := newConsole(&out, &stderr)
 
 	ui.success("Connected: %s → localhost:8080", "/callback")
-	ui.noticeOut("Requests will appear below. Press Ctrl+C to stop forwarding and release the path.")
+	ui.noticeOut("Waiting for requests… (Ctrl+C to release)")
 	ui.activity("GET", "/callback", 200, "42ms")
 	ui.activity("POST", "/callback", 502, "3ms")
 	ui.claimHeader()
@@ -25,7 +25,7 @@ func TestConsolePlainOutputHasSemanticMarkersAndNoANSI(t *testing.T) {
 	ui.failure("claim failed")
 
 	gotOut := out.String()
-	for _, want := range []string{"Connected: /callback → localhost:8080", "Requests will appear below.", "→ GET", "200", "→ POST", "502", "PATH", "FORWARDS TO / OWNER", "STARTED", "localhost:8080", "(you)"} {
+	for _, want := range []string{"Connected: /callback → localhost:8080", "Waiting for requests…", "→ GET", "200", "→ POST", "502", "PATH", "FORWARDS TO / OWNER", "STARTED", "localhost:8080", "(you)"} {
 		if !strings.Contains(gotOut, want) {
 			t.Errorf("stdout %q does not contain %q", gotOut, want)
 		}
@@ -52,7 +52,7 @@ func TestConsoleColorCanBeRenderedWithoutChangingText(t *testing.T) {
 	ui.colorOut = true
 	ui.colorErr = true
 	ui.success("Connected: /callback → localhost:8080")
-	ui.noticeOut("Requests will appear below. Press Ctrl+C to stop forwarding and release the path.")
+	ui.noticeOut("Waiting for requests… (Ctrl+C to release)")
 	ui.activity("GET", "/callback", 200, "1ms")
 	ui.activity("GET", "/callback", 302, "1ms")
 	ui.activity("GET", "/callback", 404, "1ms")
@@ -79,7 +79,7 @@ func TestConsoleColorCanBeRenderedWithoutChangingText(t *testing.T) {
 		}
 	}
 	for name, sequence := range map[string]string{
-		"usage hint":    "\x1b[36mRequests will appear below.",
+		"usage hint":    "\x1b[36mWaiting for requests…",
 		"finite expiry": "\x1b[36mexpires in 1m",
 	} {
 		if !strings.Contains(got, sequence) {

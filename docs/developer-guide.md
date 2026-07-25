@@ -96,8 +96,13 @@ exists, every client command parses it strictly and reports malformed YAML,
 unknown keys, invalid value types, and an invalid `default_scheme` with the
 file location before connecting.
 
-See the [provider recipes](webhook-recipes.md) for Stripe, GitHub, Slack, and
-OAuth examples.
+Tunlease changes only where an existing callback is handled; it does not
+replace provider security. Keep Stripe, GitHub, and Slack signature
+verification enabled and use the staging endpoint's secret locally. Slack
+handlers must still answer URL-verification challenges. For OAuth callbacks,
+start a fresh authorization flow after connecting and continue validating
+`state`. Keep callback handlers idempotent because providers may retry and a
+tunnel failure after dispatch is never replayed by Tunlease.
 
 ## Lifecycle
 
@@ -109,16 +114,16 @@ internal claim IDs:
 
 ```text
 Connected: /webhooks/provider/callback/* → localhost:8080
-Requests will appear below. Press Ctrl+C to stop forwarding and release the path.
+Waiting for requests… (Ctrl+C to release)
 ```
 
 Gateways with a finite claim duration include `until HH:MM:SS` in the first
 line. Detached claims use the same route and deadline wording, then show the log
 path and the `tul release` command.
 Reaching that advertised deadline is a successful lifecycle completion:
-the CLI prints `Claim expired …; tunnel closed.` and exits 0. Likewise, a
-foreground claim stopped by another `tul release` prints `Claim released;
-tunnel closed.` and exits 0. The Go client still exposes `claim_expired` and
+the CLI prints `Claim expired …` and exits 0. Likewise, a foreground claim
+stopped by another `tul release` prints `Released.` and exits 0. The Go client
+still exposes `claim_expired` and
 `claim_released` through `Session.Err()` as terminal reasons.
 
 While connected, each failed local connection is printed in the foreground or

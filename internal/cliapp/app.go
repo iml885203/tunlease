@@ -237,11 +237,7 @@ func runClaim(ui *console, c *tunnelclient.Client, paths []string, to int, _ boo
 		ui.event(connectionEvent("connected", cl.Paths, to, cl.ExpiresAt))
 	} else {
 		ui.success("%s", connectionMessage("Connected", cl.Paths, to, cl.ExpiresAt))
-		pathNoun := "path"
-		if len(cl.Paths) > 1 {
-			pathNoun = "paths"
-		}
-		ui.noticeOut("Requests will appear below. Press Ctrl+C to stop forwarding and release the %s.", pathNoun)
+		ui.noticeOut("Waiting for requests… (Ctrl+C to release)")
 	}
 	for {
 		select {
@@ -305,7 +301,7 @@ func printStoppedTerminal(ui *console, paths []string) {
 	if ui.json {
 		ui.event(map[string]any{"type": "released", "paths": paths})
 	} else {
-		ui.info("\nreleased, tunnel closed")
+		ui.info("\nReleased.")
 	}
 }
 
@@ -352,15 +348,15 @@ func printExpectedTerminal(ui *console, terminal expectedTerminal, claim tunnelc
 			return
 		}
 		if claim.ExpiresAt != nil {
-			ui.info("Claim expired at %s; tunnel closed.", claim.ExpiresAt.Local().Format("15:04:05"))
+			ui.info("Claim expired at %s.", claim.ExpiresAt.Local().Format("15:04:05"))
 		} else {
-			ui.info("Claim expired; tunnel closed.")
+			ui.info("Claim expired.")
 		}
 	case terminalReleased:
 		if ui.json {
 			ui.event(map[string]any{"type": "released", "paths": claim.Paths})
 		} else {
-			ui.info("Claim released; tunnel closed.")
+			ui.info("Released.")
 		}
 	}
 }
@@ -478,9 +474,9 @@ func runList(ui *console, ctx context.Context, c *tunnelclient.Client, all bool)
 	}
 	if shown == 0 {
 		if all {
-			ui.info("no active claims")
+			ui.info("No active claims.")
 		} else {
-			ui.info("no active claims of yours (use --all to see everyone's)")
+			ui.info("No active claims. Use --all to include others.")
 		}
 	}
 	return nil
@@ -536,7 +532,7 @@ func runRelease(ui *console, ctx context.Context, c *tunnelclient.Client, args [
 			return nil
 		}
 		if released == 0 && alreadyAbsent == 0 {
-			ui.info("no claims recorded for local port %d on this gateway", relTo)
+			ui.info("No claims for localhost:%d.", relTo)
 		}
 		return nil
 	}
@@ -584,7 +580,7 @@ func runRelease(ui *console, ctx context.Context, c *tunnelclient.Client, args [
 			if ui.json {
 				ui.event(map[string]any{"type": "released", "paths": []string{target}})
 			} else {
-				ui.success("released %s", target)
+				ui.success("Released: %s", target)
 			}
 			return nil
 		}
@@ -601,7 +597,7 @@ func printMissingRelease(ui *console, target, gateway string) {
 		})
 		return
 	}
-	ui.info("no active claim found for %s", target)
+	ui.info("No active claim: %s", target)
 }
 
 func claimAlreadyAbsent(err error) bool {
@@ -644,10 +640,10 @@ func printReleased(ui *console, paths []string, localPort int, alreadyAbsent boo
 		return
 	}
 	if alreadyAbsent {
-		ui.info("already released %s", strings.Join(paths, " "))
+		ui.info("Already released: %s", strings.Join(paths, " "))
 		return
 	}
-	ui.success("released %s", strings.Join(paths, " "))
+	ui.success("Released: %s", strings.Join(paths, " "))
 }
 
 type partialReleaseError struct {

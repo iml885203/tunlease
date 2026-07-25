@@ -1,4 +1,4 @@
-# Platform deployment
+# Self-hosting Tunlease
 
 [English](platform-deployment.md) · [繁體中文](platform-deployment.zh-TW.md)
 

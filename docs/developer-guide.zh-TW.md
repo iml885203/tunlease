@@ -91,8 +91,12 @@ verification，只能用於可信的開發網路。
 每個 client command 都會 strict parse，並在連線前回報檔案位置、malformed
 YAML、未知 key、錯誤 value type 或非法 `default_scheme`。
 
-Stripe、GitHub、Slack 與 OAuth 範例請見
-[provider recipes](webhook-recipes.zh-TW.md)。
+Tunlease 只改變既有 callback 的處理位置，不取代 provider security。Stripe、
+GitHub 與 Slack 的 signature verification 必須保持啟用，並在本機使用 staging
+endpoint 的 secret；Slack handler 仍需回應 URL-verification challenge。OAuth
+callback 應在 tunnel 連線後重新開始 authorization flow，並繼續驗證 `state`。
+Provider 可能 retry，且 Tunlease 不會 replay dispatch 後失敗的 request，因此
+callback handler 必須保持 idempotent。
 
 ## Lifecycle
 
@@ -103,15 +107,15 @@ claim，讓本機 service 可以稍後啟動。Ready 訊息會直接顯示完整
 
 ```text
 Connected: /webhooks/provider/callback/* → localhost:8080
-Requests will appear below. Press Ctrl+C to stop forwarding and release the path.
+Waiting for requests… (Ctrl+C to release)
 ```
 
 Gateway 若限制 claim duration，第一行會包含 `until HH:MM:SS`。Detached claim
 使用相同的 route 與 deadline 表達，再顯示 log path 及 `tul release` command。
 到達已公告的 deadline 是成功的 lifecycle completion：CLI 會顯示
-`Claim expired …; tunnel closed.` 並以 exit 0 結束。Foreground claim 若由
-另一個 `tul release` 停止，也會顯示 `Claim released; tunnel closed.` 並
-exit 0。Go client 仍會透過 `Session.Err()` 暴露 `claim_expired` 與
+`Claim expired …` 並以 exit 0 結束。Foreground claim 若由另一個
+`tul release` 停止，也會顯示 `Released.` 並 exit 0。Go client 仍會透過
+`Session.Err()` 暴露 `claim_expired` 與
 `claim_released` terminal reason。
 
 連線期間每次本機連線失敗都會印在 foreground，或寫入 detached claim log，
