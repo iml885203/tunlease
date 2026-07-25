@@ -70,7 +70,8 @@ scoop bucket add tunlease https://github.com/iml885203/scoop-bucket
 scoop install tunlease
 ```
 
-Or install the latest verified binary directly:
+<details>
+<summary>Or install the latest verified binary directly</summary>
 
 ```bash
 # macOS and Linux
@@ -81,6 +82,8 @@ curl -fsSL https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/ins
 # Windows PowerShell (amd64)
 irm https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/install.ps1 | iex
 ```
+
+</details>
 
 Then claim the callback path:
 

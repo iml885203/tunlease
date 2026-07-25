@@ -65,7 +65,8 @@ scoop bucket add tunlease https://github.com/iml885203/scoop-bucket
 scoop install tunlease
 ```
 
-也可直接安裝最新且經過驗證的 binary：
+<details>
+<summary>或直接安裝最新且經過驗證的 binary</summary>
 
 ```bash
 # macOS 與 Linux
@@ -76,6 +77,8 @@ curl -fsSL https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/ins
 # Windows PowerShell（amd64）
 irm https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/install.ps1 | iex
 ```
+
+</details>
 
 接著 claim callback path：
 
