@@ -111,6 +111,9 @@ jobs:
     needs: tag
     permissions:
       contents: write
+      # Reusable workflow permissions are validated for every nested job,
+      # including the target-filtered image job.
+      packages: write
     uses: ./.github/workflows/publish.yml
     with:
       version: ${{ needs.tag.outputs.version }}
