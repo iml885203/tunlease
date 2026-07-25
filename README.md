@@ -9,7 +9,7 @@ laptop while every other path keeps serving the real app. Ctrl+C to release.
 tunle claim '/webhooks/stripe/*' --to 8080 --gateway staging.myapp.com
 ```
 
-![A fixed callback URL returns the app's 404 until you claim its path, then reaches a server on your laptop — on the same URL](assets/demo.gif)
+![Claiming a path on the public Tunlease demo relay and forwarding it to a server on your laptop](assets/demo.gif)
 
 Similar in spirit to [ngrok](https://ngrok.com/),
 [localtunnel](https://github.com/localtunnel/localtunnel), and

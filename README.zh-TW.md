@@ -9,7 +9,7 @@
 tunle claim '/webhooks/stripe/*' --to 8080 --gateway staging.myapp.com
 ```
 
-![claim 前固定 callback URL 回 app 的 404，`tunle claim` 後同一 URL 打到本機服務](assets/demo.gif)
+![在 Tunlease public demo relay claim path，並將流量轉送到 laptop 上的服務](assets/demo.gif)
 
 概念上類似 [ngrok](https://ngrok.com/)、
 [localtunnel](https://github.com/localtunnel/localtunnel) 與
