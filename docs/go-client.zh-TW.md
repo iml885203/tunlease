@@ -42,7 +42,8 @@ Gateway 限制 claim duration 時，`session.Claim().ExpiresAt` 會包含 deadli
 terminal expiry handshake 後，`session.Err()` 會回傳 code 為
 `claim_expired` 的 API error。
 Dispatch 後若無法連到 local port，gateway 會回
-`502 claimed tunnel target unavailable`，session 也會送出 best-effort
+`502 This path is claimed, but its local service is unavailable.`，只引導
+owner 查看 terminal，不暴露本機細節。Session 也會送出 best-effort
 `EventLocalTargetError`；claim 會保持 connected。
 
 `Config` 支援 `Gateway`、`Token`、`DefaultScheme`、`Insecure` 與 custom

@@ -42,8 +42,9 @@ When the gateway limits claim duration, `session.Claim().ExpiresAt` contains
 the deadline and `session.Err()` returns an API error with code
 `claim_expired` after the terminal expiry handshake.
 If a dispatched request cannot connect to the local port, the gateway returns
-`502 claimed tunnel target unavailable` and the session emits the best-effort
-`EventLocalTargetError`; the claim remains connected.
+`502 This path is claimed, but its local service is unavailable.` and directs
+the owner to the terminal without exposing local details. The session emits
+the best-effort `EventLocalTargetError`; the claim remains connected.
 
 `Config` supports `Gateway`, `Token`, `DefaultScheme`, `Insecure`, and a custom
 `HTTPClient`. Gateway must be a host or URL without a path; the package appends
