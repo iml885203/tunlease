@@ -6,18 +6,6 @@ Tunlease keeps the callback URL already configured at the provider. Replace the
 example paths and ports below with the values your platform team assigned.
 Start the local service before claiming a path.
 
-## Check before claiming
-
-Use `doctor` to check the local port, gateway connection, authentication, path
-syntax, and whether the path overlaps a connected claim:
-
-```bash
-tunle doctor /webhooks/stripe/* --to 8080
-```
-
-This does not reserve the path or send test traffic. The gateway makes the
-authoritative allowlist and ownership decision when `claim` connects.
-
 ## Stripe
 
 If the existing endpoint is

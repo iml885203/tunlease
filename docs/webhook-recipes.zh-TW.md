@@ -5,18 +5,6 @@
 Tunlease 會保留 provider 既有的 callback URL。請把下列 path 與 port
 替換成 platform team 分配的值，並在 claim 前先啟動 local service。
 
-## Claim 前檢查
-
-使用 `doctor` 檢查 local port、gateway connection、authentication、path
-syntax，以及 path 是否與已連線的 claim 重疊：
-
-```bash
-tunle doctor /webhooks/stripe/* --to 8080
-```
-
-這不會保留 path 或送出 test traffic。`claim` 連線時，gateway 才會對
-allowlist 與 ownership 做最終判斷。
-
 ## Stripe
 
 若既有 endpoint 是

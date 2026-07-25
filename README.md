@@ -84,13 +84,6 @@ curl -fsSL https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/ins
 irm https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/install.ps1 | iex
 ```
 
-Optionally check the local service, gateway, authentication, and path before
-claiming:
-
-```bash
-tunle doctor /webhooks/provider/callback/* --to 8080 --gateway myapp.example.com
-```
-
 Then claim the callback path:
 
 ```bash
@@ -117,7 +110,6 @@ It is all one `tunle` binary; a subcommand selects the role:
 | Command | Runs on | Responsibility |
 |---|---|---|
 | `tunle claim` (also `list` / `release`) | Developer machine | Connect a path to a local service |
-| `tunle doctor` | Developer machine | Check the local service, gateway, authentication, and path before claiming |
 | `tunle gateway` | In front of the app | Own active paths, terminate tunnels, route requests, and proxy to the original app |
 
 The gateway sits in front of the app and does everything on the server side. It

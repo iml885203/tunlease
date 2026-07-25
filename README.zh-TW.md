@@ -79,12 +79,6 @@ curl -fsSL https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/ins
 irm https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/install.ps1 | iex
 ```
 
-Claim 前可先檢查 local service、gateway、authentication 與 path：
-
-```bash
-tunle doctor /webhooks/provider/callback/* --to 8080 --gateway myapp.example.com
-```
-
 接著 claim callback path：
 
 ```bash
@@ -108,7 +102,6 @@ Installer 會在更換 binary 前驗證發布的 SHA-256 checksum。
 | 命令 | 執行於 | 職責 |
 |---|---|---|
 | `tunle claim`（及 `list` / `release`） | 開發者電腦 | 把一條 path 連到本機服務 |
-| `tunle doctor` | 開發者電腦 | Claim 前檢查 local service、gateway、authentication 與 path |
 | `tunle gateway` | 前置於 app | 管理 active path、終止 tunnel、路由 request 並 proxy 到原 app |
 
 Gateway 位於 app 前面，並包辦 server 端所有事情。它把 control plane 放在

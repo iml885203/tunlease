@@ -42,7 +42,10 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 		c.Flags().BoolVar(&insecure, "insecure", false, "skip gateway TLS verification, e.g. a self-signed gateway (env TUNLEASE_INSECURE)")
 	}
 	get := func() (*tunnelclient.Client, error) {
-		c := loadConfig()
+		c, err := loadConfig()
+		if err != nil {
+			return nil, err
+		}
 		if gateway != "" {
 			c.Gateway = gateway
 		} else if v := os.Getenv("TUNLEASE_GATEWAY"); v != "" {
@@ -84,7 +87,11 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 				// tunnel is up. Pass the connection options through explicitly.
 				scheme := os.Getenv("TUNLEASE_DEFAULT_SCHEME")
 				if scheme == "" {
-					scheme = loadConfig().DefaultScheme
+					c, e := loadConfig()
+					if e != nil {
+						return e
+					}
+					scheme = c.DefaultScheme
 				}
 				return runDetach(paths, to, gateway, token, insecure || os.Getenv("TUNLEASE_INSECURE") != "", scheme)
 			}
@@ -142,31 +149,6 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 	releaseCmd.Flags().IntVar(&relTo, "to", 0, "release all claims tunnelled to this local port")
 	addClientFlags(releaseCmd)
 	root.AddCommand(releaseCmd)
-
-	var doctorTo int
-	doctorCmd := &cobra.Command{
-		Use:   "doctor [PATH]",
-		Short: "Check local service, gateway, authentication, and optional path",
-		Args:  cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			var path string
-			if len(args) == 1 {
-				var e error
-				path, e = NormalizePath(args[0])
-				if e != nil {
-					return fmt.Errorf("%q: %w", args[0], e)
-				}
-			}
-			c, e := get()
-			if e != nil {
-				return e
-			}
-			return runDoctor(cmd.Context(), c, path, doctorTo)
-		},
-	}
-	doctorCmd.Flags().IntVar(&doctorTo, "to", 0, "local port to check (optional)")
-	addClientFlags(doctorCmd)
-	root.AddCommand(doctorCmd)
 
 	root.AddCommand(newGatewayCommand())
 	return root
@@ -329,14 +311,30 @@ func contains(a []string, s string) bool {
 	}
 	return false
 }
-func loadConfig() config {
+func loadConfig() (config, error) {
 	var c config
 	h, e := os.UserHomeDir()
-	if e == nil {
-		b, e := os.ReadFile(filepath.Join(h, ".tunlease.yaml"))
-		if e == nil {
-			_ = yaml.Unmarshal(b, &c)
-		}
+	if e != nil {
+		return c, nil
 	}
-	return c
+	path := filepath.Join(h, ".tunlease.yaml")
+	b, e := os.ReadFile(path)
+	if errors.Is(e, os.ErrNotExist) {
+		return c, nil
+	}
+	if e != nil {
+		return c, fmt.Errorf("%s: %w", path, e)
+	}
+	if strings.TrimSpace(string(b)) == "" {
+		return c, nil
+	}
+	decoder := yaml.NewDecoder(strings.NewReader(string(b)))
+	decoder.KnownFields(true)
+	if e := decoder.Decode(&c); e != nil {
+		return config{}, fmt.Errorf("%s: %w", path, e)
+	}
+	if c.DefaultScheme != "" && c.DefaultScheme != "http" && c.DefaultScheme != "https" {
+		return config{}, fmt.Errorf("%s: default_scheme must be http or https", path)
+	}
+	return c, nil
 }

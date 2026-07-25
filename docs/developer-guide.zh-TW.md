@@ -32,19 +32,16 @@ tunle claim /webhooks/provider/callback/* --to 8080
 Gateway URL 只填 host；client 會加入固定的 `/_tunlease`。預設使用 HTTPS，
 只有本機開發才明確填 `http://`。
 
-Claim 前可診斷 local port、gateway、authentication 與 path：
-
-```bash
-tunle doctor /webhooks/provider/callback/* --to 8080
-```
-
-`doctor` 不會保留 path；`claim` 連線時 gateway 會再次檢查 allowlist。
-Stripe、GitHub、Slack 與 OAuth 範例請見
-[provider recipes](webhook-recipes.zh-TW.md)。
-
 也可在 `~/.tunlease.yaml` 設定 `gateway`、`token`、`insecure` 與
 `default_scheme`。應優先安裝正確 CA；`--insecure` 會停用 WSS server
 verification，只能用於可信的開發網路。
+
+此檔案並非必要；沒有它仍可使用 flags 與 environment variables。檔案存在時，
+每個 client command 都會 strict parse，並在連線前回報檔案位置、malformed
+YAML、未知 key、錯誤 value type 或非法 `default_scheme`。
+
+Stripe、GitHub、Slack 與 OAuth 範例請見
+[provider recipes](webhook-recipes.zh-TW.md)。
 
 ## Lifecycle
 
