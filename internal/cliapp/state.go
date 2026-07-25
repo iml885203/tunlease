@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"time"
 )
 
 // state 記錄這台機器建立過的 claims（~/.tunlease/state.json），
@@ -18,6 +19,9 @@ type stateClaim struct {
 	Gateway string   `json:"gateway"`
 	Paths   []string `json:"paths"`
 	To      int      `json:"to"`
+	// ExpiresAt lets the detached parent show the same lifecycle deadline as
+	// the foreground process. Older state files simply leave it nil.
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 	// PID is the detached daemon holding this claim (0 for a foreground claim).
 	PID int `json:"pid,omitempty"`
 }

@@ -102,9 +102,10 @@ func NormalizePath(path string) (string, error) {
 type EventType string
 
 const (
-	EventTunnelReconnected EventType = "tunnel_reconnected"
-	EventLocalTargetError  EventType = "local_target_error"
-	EventRequestActivity   EventType = "request_activity"
+	EventTunnelDisconnected EventType = "tunnel_disconnected"
+	EventTunnelReconnected  EventType = "tunnel_reconnected"
+	EventLocalTargetError   EventType = "local_target_error"
+	EventRequestActivity    EventType = "request_activity"
 )
 
 // Event describes a best-effort, non-terminal lifecycle notification. Slow

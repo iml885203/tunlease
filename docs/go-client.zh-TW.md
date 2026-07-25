@@ -25,6 +25,8 @@ defer session.Close()
 
 for event := range session.Events() {
     switch event.Type {
+    case tunnelclient.EventTunnelDisconnected:
+        log.Print("connection lost; retrying")
     case tunnelclient.EventTunnelReconnected:
         log.Printf("reconnected as %s", event.Claim.ID)
     case tunnelclient.EventLocalTargetError:
@@ -43,6 +45,8 @@ return session.Err()
 該 path 本身與任意深度的所有子路徑。Session 持有 paths，直到 `Close` 或
 context cancellation。重連會取得新 claim ID，
 可由 `session.Claim()` 讀取。
+開始 retry 時會送出一次 `EventTunnelDisconnected`；replacement ready 後才
+送出 `EventTunnelReconnected`。
 Gateway 限制 claim duration 時，`session.Claim().ExpiresAt` 會包含 deadline；
 terminal expiry handshake 後，`session.Err()` 會回傳 code 為
 `claim_expired` 的 API error。

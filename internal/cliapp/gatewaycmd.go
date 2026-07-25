@@ -48,7 +48,7 @@ func newGatewayCommand() *cobra.Command {
 			return runGateway(cmd.Context(), configPath)
 		},
 	}
-	cmd.Flags().StringVar(&configPath, "config", "/etc/tunlease/config.yaml", "YAML config")
+	cmd.Flags().StringVarP(&configPath, "config", "c", "/etc/tunlease/config.yaml", "YAML config")
 	return cmd
 }
 

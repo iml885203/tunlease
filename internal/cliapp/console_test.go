@@ -2,25 +2,30 @@ package cliapp
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/iml885203/tunlease/pkg/tunnelclient"
+	"github.com/spf13/cobra"
 )
 
 func TestConsolePlainOutputHasSemanticMarkersAndNoANSI(t *testing.T) {
 	var out, stderr bytes.Buffer
 	ui := newConsole(&out, &stderr)
 
-	ui.success("claimed %s", "/callback")
-	ui.status("tunnel connected  (Ctrl+C to release)")
+	ui.success("Connected: %s → localhost:8080", "/callback")
+	ui.noticeOut("Requests will appear below. Press Ctrl+C to stop forwarding and release the path.")
 	ui.activity("GET", "/callback", 200, "42ms")
 	ui.activity("POST", "/callback", 502, "3ms")
+	ui.claimHeader()
 	ui.claimRow("/callback", "→ localhost:8080", "connected", "12:34:56", "  (you)", true, false)
 	ui.warning("WARNING: Local service unavailable")
 	ui.failure("claim failed")
 
 	gotOut := out.String()
-	for _, want := range []string{"claimed /callback", "tunnel connected", "→ GET", "200", "→ POST", "502", "localhost:8080", "(you)"} {
+	for _, want := range []string{"Connected: /callback → localhost:8080", "Requests will appear below.", "→ GET", "200", "→ POST", "502", "PATH", "FORWARDS TO / OWNER", "STARTED", "localhost:8080", "(you)"} {
 		if !strings.Contains(gotOut, want) {
 			t.Errorf("stdout %q does not contain %q", gotOut, want)
 		}
@@ -46,9 +51,8 @@ func TestConsoleColorCanBeRenderedWithoutChangingText(t *testing.T) {
 	ui := newConsole(&out, &stderr)
 	ui.colorOut = true
 	ui.colorErr = true
-	ui.success("claimed /callback")
-	ui.status("tunnel connected  (Ctrl+C to release)")
-	ui.noticeOut("WARNING: real 3rd-party traffic now flows to localhost:8080")
+	ui.success("Connected: /callback → localhost:8080")
+	ui.noticeOut("Requests will appear below. Press Ctrl+C to stop forwarding and release the path.")
 	ui.activity("GET", "/callback", 200, "1ms")
 	ui.activity("GET", "/callback", 302, "1ms")
 	ui.activity("GET", "/callback", 404, "1ms")
@@ -75,7 +79,7 @@ func TestConsoleColorCanBeRenderedWithoutChangingText(t *testing.T) {
 		}
 	}
 	for name, sequence := range map[string]string{
-		"safety notice": "\x1b[36mWARNING: real 3rd-party traffic",
+		"usage hint":    "\x1b[36mRequests will appear below.",
 		"finite expiry": "\x1b[36mexpires in 1m",
 	} {
 		if !strings.Contains(got, sequence) {
@@ -94,6 +98,46 @@ func TestPrintErrorKeepsOnePlainSeverityMarker(t *testing.T) {
 	PrintError(&stderr, fmt.Errorf("claim failed"))
 	if got, want := stderr.String(), "Error: claim failed\n"; got != want {
 		t.Fatalf("PrintError() = %q, want %q", got, want)
+	}
+}
+
+func TestPrintErrorAddsGatewayRecoveryAction(t *testing.T) {
+	var stderr bytes.Buffer
+	PrintError(&stderr, &tunnelclient.APIError{
+		Status: 403,
+		Code:   "path_not_allowed",
+		Detail: "path is outside the allowlist",
+	})
+	got := stderr.String()
+	for _, want := range []string{"Error: path_not_allowed", "path is outside the allowlist", "Ask the gateway operator for an allowed path."} {
+		if !strings.Contains(got, want) {
+			t.Errorf("PrintError() = %q, missing %q", got, want)
+		}
+	}
+}
+
+func TestJSONPartialReleaseErrorIncludesSummary(t *testing.T) {
+	command := &cobra.Command{}
+	command.Flags().String("output", "json", "")
+	var stderr bytes.Buffer
+	PrintCommandError(&stderr, command, []string{"--output", "json"}, &partialReleaseError{
+		Released: 1,
+		Failures: []releaseFailure{{Paths: []string{"/b"}, Code: "internal_error", Message: "try again"}},
+	})
+	var event map[string]any
+	if err := json.Unmarshal(stderr.Bytes(), &event); err != nil {
+		t.Fatalf("JSON error = %q: %v", stderr.String(), err)
+	}
+	if event["code"] != "partial_release" || event["released"] != float64(1) || event["failed"] != float64(1) {
+		t.Fatalf("JSON error = %#v", event)
+	}
+	failures, ok := event["failures"].([]any)
+	if !ok || len(failures) != 1 {
+		t.Fatalf("JSON failures = %#v", event["failures"])
+	}
+	failure, ok := failures[0].(map[string]any)
+	if !ok || failure["code"] != "internal_error" {
+		t.Fatalf("JSON failure = %#v", failures[0])
 	}
 }
 

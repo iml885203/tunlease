@@ -93,8 +93,9 @@ callback，包含其中的資料與 credential。請先啟動本機服務、只 
 最窄 path，並確保 callback handler idempotent：provider retry 與 request
 中途 tunnel failure 都可能造成重複 delivery。
 
-設定、lifecycle 指令與問題排查請看[開發者指南](docs/developer-guide.zh-TW.md)。
-Installer 會在更換 binary 前驗證發布的 SHA-256 checksum。
+設定、lifecycle 指令、`--output json` automation 與問題排查請看
+[開發者指南](docs/developer-guide.zh-TW.md)。Installer 會在更換 binary 前
+驗證發布的 SHA-256 checksum。
 
 ## 元件與部署模型
 

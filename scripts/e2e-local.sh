@@ -105,6 +105,27 @@ echo "OK: overlap 409 with claimed_by"
 ./bin/tul list | grep -q "(you)" || fail "list missing (you) marker"
 echo "OK: list shows own claim"
 
+# --- JSON output is machine-readable and keeps stable types/codes ---
+./bin/tul list --output json > "$TMP/list.json"
+python3 - "$TMP/list.json" <<'PY' || fail "JSON list contract failed"
+import json, sys
+doc = json.load(open(sys.argv[1]))
+assert doc["schema_version"] == 1
+assert doc["type"] == "claim_list"
+assert doc["claims"][0]["target"] == "localhost:18500"
+PY
+if ./bin/tul claim --output json --to $PORT_LOCAL /test/cb/deeper 2> "$TMP/conflict.json"; then
+  fail "overlapping JSON claim should fail"
+fi
+python3 - "$TMP/conflict.json" <<'PY' || fail "JSON error contract failed"
+import json, sys
+doc = json.load(open(sys.argv[1]))
+assert doc["schema_version"] == 1
+assert doc["type"] == "error"
+assert doc["code"] == "path_claimed"
+PY
+echo "OK: JSON output contract"
+
 # --- kill -9 → connection close → claim 消失 ---
 kill -9 "$CLAIM_PID"
 for _ in $(seq 1 20); do

@@ -17,6 +17,9 @@ scoop install tunlease
 
 Homebrew installs shell completions for bash, zsh, and fish. The CLI can also
 print a completion script directly with `tul completion SHELL`.
+Common short flags are `-p` for `--to`, `-g` for `--gateway`, `-t` for
+`--token`, `-k` for `--insecure`, `-d` for `--detach`, and `-a` for `--all`.
+Use `-o` for `--output`.
 
 ## Console output
 
@@ -25,6 +28,45 @@ connection state, warnings, errors, and HTTP status classes. Command behavior,
 exit status, and stdout/stderr destinations remain unchanged. Color is disabled
 automatically for pipes, redirected output, and detached claim logs. Set
 `NO_COLOR=1` to disable it explicitly. Top-level errors are printed once.
+Gateway errors include their stable error code and one recovery action when
+there is a clear next step.
+
+For automation, client commands accept `--output json` (`-o json`). `list`
+returns one JSON document; foreground `claim` and multi-path `release` use
+newline-delimited JSON events. Every document includes `schema_version: 1` and
+a stable `type`. Errors are written to stderr with a stable `code`; successful
+commands exit 0 and errors exit 1, as in text mode. JSON output never contains
+ANSI escapes. For example:
+
+```json
+{"schema_version":1,"type":"connected","paths":["/callback"],"target":"localhost:8080","local_port":8080}
+{"schema_version":1,"type":"request","method":"POST","path":"/callback","status":200,"duration_ms":42}
+{"schema_version":1,"type":"error","code":"path_not_allowed","message":"path is outside the allowlist","action":"Ask the gateway operator for an allowed path."}
+```
+
+Error codes are gateway API codes when available, `partial_release` when only
+some `release --to` operations succeed, and `command_failed` otherwise. Fields
+may be added within schema version 1; existing fields keep their meaning.
+Consumers must ignore unknown fields and event types so version 1 can grow
+additively.
+
+| `type` | Command / stream | Required fields | Optional fields |
+|---|---|---|---|
+| `warning` | `claim` stderr | `code`, `message` | — |
+| `connected` | `claim` stdout | `paths`, `target`, `local_port` | `expires_at`, `background`, `log_path`, `release_command` |
+| `disconnected` | foreground `claim` stdout | `state` (`retrying`) | — |
+| `reconnected` | foreground `claim` stdout | `paths`, `target`, `local_port` | `expires_at` |
+| `local_error` | foreground `claim` stdout | `code`, `message`, `target`, `local_port` | — |
+| `request` | foreground `claim` stdout | `method`, `path`, `status`, `duration_ms` | — |
+| `released` | `claim` or `release` stdout | `paths` | `local_port` |
+| `claim_list` | `list` stdout | `claims`; every item has `paths`, `owner`, `started_at`, `mine`, `status` | items with `mine: true` have `target` and `local_port`; finite claims have `expires_at` |
+| `release_summary` | `release --to` stdout | `released`, `failed`, `local_port`, `gateway` | — |
+| `error` | failed command stderr | `code`, `message` | `action`; partial release also has `released`, `failed`, structured `failures`, `local_port`, and `gateway` |
+
+`claim -d --output json` writes one `connected` record to the parent stdout.
+Its `log_path` contains JSONL from the child; child stdout and stderr share that
+file. Foreground lifecycle and request events use stdout. Preflight warnings
+and terminal errors use stderr.
 
 ## Connect
 
@@ -61,9 +103,22 @@ OAuth examples.
 A successful `claim` means path ownership and the data tunnel are both ready.
 Before claiming, the CLI probes the local port. An unavailable port emits a
 warning but does not block the claim, so the local service may start afterward.
+The ready message shows the complete routing relationship without exposing
+internal claim IDs:
+
+```text
+Connected: /webhooks/provider/callback/* → localhost:8080
+Requests will appear below. Press Ctrl+C to stop forwarding and release the path.
+```
+
+Gateways with a finite claim duration include `until HH:MM:SS` in the first
+line. Detached claims use the same route and deadline wording, then show the log
+path and the `tul release` command.
+
 While connected, each failed local connection is printed in the foreground or
-written to the detached claim log. Every forwarded request also emits a compact
-activity line with its method, path, response status, and duration:
+written to the detached claim log. Connection errors omit redundant dial
+internals. Every forwarded request also emits a compact activity line with its
+method, path, response status, and duration:
 
 ```text
 → POST /webhooks/provider/callback  200  42ms
@@ -72,9 +127,12 @@ activity line with its method, path, response status, and duration:
 Activity lines deliberately omit the query string, headers, and body so secrets
 and webhook payloads are not copied into terminal output. Detached claims write
 the same activity lines to `~/.tunlease/claim-PORT.log`.
+If the gateway connection drops, text mode prints
+`Connection lost; retrying…` once before retrying. Requests use the origin
+during that gap. A successful replacement prints `Reconnected`.
 The foreground process owns them: Ctrl+C or connection close releases them
-immediately. On transient network loss it reconnects automatically; the claim
-ID changes and requests use the origin during the gap.
+immediately. On transient network loss it reconnects automatically and the
+claim ID changes.
 
 ```bash
 tul list
@@ -82,6 +140,13 @@ tul list --all
 tul release '/webhooks/provider/callback/*'
 tul release --to 8080
 ```
+
+`tul list` labels the path, forwarding target or owner, status, and start time.
+It shows local ports only for claims created by this machine.
+`release --to` attempts every locally recorded claim on that port for the
+selected gateway. Each successful release is persisted immediately; if later
+releases fail, the command reports a `partial_release` summary and leaves only
+the failed entries for a safe retry.
 
 `-d` is shorthand for `--detach`; it starts a background process. Always use
 `release` in automation cleanup. Treat command exit status as the interface;

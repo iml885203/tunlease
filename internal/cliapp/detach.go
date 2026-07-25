@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"strings"
 	"time"
 )
 
@@ -15,7 +14,7 @@ import (
 // and returns its id. It makes `tul claim --detach` non-blocking, which is
 // what an agent needs: the call returns once the tunnel is up, and the claim is
 // torn down later with `tul release`.
-func runDetach(ui *console, paths []string, to int, gateway, token string, insecure bool, scheme string) error {
+func runDetach(ui *console, paths []string, to int, gatewayArg, stateGateway, token string, insecure bool, scheme string) error {
 	self, err := os.Executable()
 	if err != nil {
 		return err
@@ -34,8 +33,11 @@ func runDetach(ui *console, paths []string, to int, gateway, token string, insec
 	// child runs the foreground loop, and the connection options passed through
 	// explicitly so the child doesn't depend on inherited flags.
 	args := append([]string{"claim", "--_daemon", "--to", itoa(to)}, paths...)
-	if gateway != "" {
-		args = append(args, "--gateway", gateway)
+	if ui.json {
+		args = append(args, "--output", "json")
+	}
+	if gatewayArg != "" {
+		args = append(args, "--gateway", gatewayArg)
 	}
 	if token != "" {
 		args = append(args, "--token", token)
@@ -66,10 +68,18 @@ func runDetach(ui *console, paths []string, to int, gateway, token string, insec
 		if !processAlive(pid) {
 			return fmt.Errorf("background claim failed to start; see %s", logPath)
 		}
-		if c, ok := findDaemonClaim(gateway, to, paths); ok {
-			ui.success("claimed %s in the background (claim %s, pid %d)", strings.Join(paths, " "), shortID(c.ClaimID), pid)
-			ui.info("logs: %s", logPath)
-			ui.info("release with: tul release --to %d", to)
+		if c, ok := findDaemonClaim(stateGateway, to, paths, pid); ok {
+			if ui.json {
+				event := connectionEvent("connected", paths, to, c.ExpiresAt)
+				event["background"] = true
+				event["log_path"] = logPath
+				event["release_command"] = fmt.Sprintf("tul release --to %d", to)
+				ui.event(event)
+			} else {
+				ui.success("%s", connectionMessage("Connected in background", paths, to, c.ExpiresAt))
+				ui.info("Logs: %s", logPath)
+				ui.info("Stop with: tul release --to %d", to)
+			}
 			return nil
 		}
 		time.Sleep(200 * time.Millisecond)
@@ -79,11 +89,11 @@ func runDetach(ui *console, paths []string, to int, gateway, token string, insec
 
 // findDaemonClaim looks up the state entry the daemon writes once its tunnel is
 // connected, matching gateway/port/paths.
-func findDaemonClaim(gateway string, to int, paths []string) (stateClaim, bool) {
+func findDaemonClaim(gateway string, to int, paths []string, pid int) (stateClaim, bool) {
 	want := append([]string(nil), paths...)
 	slices.Sort(want)
 	for _, c := range loadState().Claims {
-		if c.To != to || c.PID == 0 {
+		if c.Gateway != gateway || c.To != to || c.PID != pid {
 			continue
 		}
 		got := append([]string(nil), c.Paths...)

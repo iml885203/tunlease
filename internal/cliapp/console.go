@@ -1,14 +1,18 @@
 package cliapp
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 
 	"github.com/fatih/color"
+	"github.com/iml885203/tunlease/pkg/tunnelclient"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
+	"github.com/spf13/cobra"
 )
 
 type console struct {
@@ -16,6 +20,7 @@ type console struct {
 	err      io.Writer
 	colorOut bool
 	colorErr bool
+	json     bool
 }
 
 func newConsole(out, err io.Writer) *console {
@@ -27,6 +32,21 @@ func newConsole(out, err io.Writer) *console {
 		colorOut: colorOut,
 		colorErr: colorErr,
 	}
+}
+
+func newConsoleOutput(out, err io.Writer, output string) *console {
+	c := newConsole(out, err)
+	c.json = output == "json"
+	return c
+}
+
+func (c *console) emitJSON(w io.Writer, event map[string]any) {
+	event["schema_version"] = 1
+	_ = json.NewEncoder(w).Encode(event)
+}
+
+func (c *console) event(event map[string]any) {
+	c.emitJSON(c.out, event)
 }
 
 func colorWriter(w io.Writer, enabled bool) io.Writer {
@@ -70,20 +90,36 @@ func styled(enabled bool, text string, attributes ...color.Attribute) string {
 
 func (c *console) success(format string, args ...any) {
 	message := fmt.Sprintf(format, args...)
+	if c.json {
+		c.emitJSON(c.out, map[string]any{"type": "message", "level": "success", "message": message})
+		return
+	}
 	_, _ = fmt.Fprintln(c.out, styled(c.colorOut, message, color.FgGreen))
 }
 
 func (c *console) info(format string, args ...any) {
+	if c.json {
+		c.emitJSON(c.out, map[string]any{"type": "message", "level": "info", "message": fmt.Sprintf(format, args...)})
+		return
+	}
 	_, _ = fmt.Fprintf(c.out, format+"\n", args...)
 }
 
 func (c *console) status(format string, args ...any) {
 	message := fmt.Sprintf(format, args...)
+	if c.json {
+		c.emitJSON(c.out, map[string]any{"type": "message", "level": "status", "message": message})
+		return
+	}
 	_, _ = fmt.Fprintln(c.out, styled(c.colorOut, message, color.FgCyan))
 }
 
 func (c *console) noticeOut(format string, args ...any) {
 	message := fmt.Sprintf(format, args...)
+	if c.json {
+		c.emitJSON(c.out, map[string]any{"type": "message", "level": "info", "message": message})
+		return
+	}
 	_, _ = fmt.Fprintln(c.out, styled(c.colorOut, message, color.FgCyan))
 }
 
@@ -97,6 +133,10 @@ func (c *console) warningOut(format string, args ...any) {
 
 func (c *console) warningTo(w io.Writer, enabled bool, format string, args ...any) {
 	message := fmt.Sprintf(format, args...)
+	if c.json {
+		c.emitJSON(w, map[string]any{"type": "warning", "code": "warning", "message": message})
+		return
+	}
 	if !enabled {
 		_, _ = fmt.Fprintln(w, message)
 		return
@@ -117,6 +157,13 @@ func (c *console) failure(format string, args ...any) {
 }
 
 func (c *console) activity(method, path string, status int, duration string) {
+	if c.json {
+		c.event(map[string]any{
+			"type": "request", "method": method, "path": path,
+			"status": status, "duration": duration,
+		})
+		return
+	}
 	statusColor := color.FgGreen
 	switch {
 	case status >= 500:
@@ -149,7 +196,122 @@ func (c *console) claimRow(paths, target, status, started, suffix string, own, e
 	_, _ = fmt.Fprintf(c.out, "%s %s %s %s%s\n", paths, target, status, started, suffix)
 }
 
-// PrintError colorizes a top-level CLI failure without changing its text.
+func (c *console) claimHeader() {
+	if c.json {
+		return
+	}
+	_, _ = fmt.Fprintf(c.out, "%-40s %-24s %-16s %s\n", "PATH", "FORWARDS TO / OWNER", "STATUS", "STARTED")
+}
+
+// PrintError colorizes a top-level CLI failure and adds an actionable hint for
+// structured gateway errors. Generic errors keep their original text.
 func PrintError(w io.Writer, err error) {
-	newConsole(io.Discard, w).failure("Error: %v", err)
+	newConsole(io.Discard, w).failure("Error: %s", actionableError(err))
+}
+
+// PrintCommandError emits the opt-in JSON error contract. Raw arguments are
+// inspected because flag parsing may stop at an earlier unknown flag.
+func PrintCommandError(w io.Writer, command *cobra.Command, args []string, err error) {
+	output := RequestedOutput(args)
+	if output == "" && command != nil {
+		if flag := command.Flags().Lookup("output"); flag != nil {
+			output = flag.Value.String()
+		}
+	}
+	if output == "json" {
+		code, message, action := errorDetails(err)
+		event := map[string]any{
+			"schema_version": 1,
+			"type":           "error",
+			"code":           code,
+			"message":        message,
+		}
+		if action != "" {
+			event["action"] = action
+		}
+		var fields interface{ CLIErrorFields() map[string]any }
+		if errors.As(err, &fields) {
+			for key, value := range fields.CLIErrorFields() {
+				event[key] = value
+			}
+		}
+		_ = json.NewEncoder(w).Encode(event)
+		return
+	}
+	PrintError(w, err)
+}
+
+// RequestedOutput finds the last requested output mode without depending on
+// successful flag parsing. It intentionally stops at the "--" separator.
+func RequestedOutput(args []string) string {
+	output := ""
+	for index := 0; index < len(args); index++ {
+		arg := args[index]
+		if arg == "--" {
+			break
+		}
+		switch {
+		case arg == "--output" || arg == "-o":
+			if index+1 < len(args) {
+				index++
+				output = args[index]
+			}
+		case strings.HasPrefix(arg, "--output="):
+			output = strings.TrimPrefix(arg, "--output=")
+		case strings.HasPrefix(arg, "-o="):
+			output = strings.TrimPrefix(arg, "-o=")
+		case strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--"):
+			body := strings.TrimPrefix(arg, "-")
+			if outputIndex := strings.IndexByte(body, 'o'); outputIndex >= 0 &&
+				strings.Trim(body[:outputIndex], "dka") == "" {
+				value := strings.TrimPrefix(body[outputIndex+1:], "=")
+				if value != "" {
+					output = value
+				}
+			}
+		}
+	}
+	return output
+}
+
+func actionableError(err error) string {
+	code, message, action := errorDetails(err)
+	if code == "command_failed" {
+		return message
+	}
+	result := fmt.Sprintf("%s — %s", code, message)
+	if action != "" {
+		result += ". " + action
+	}
+	return result
+}
+
+type cliErrorCoder interface {
+	CLIErrorCode() string
+}
+
+func errorDetails(err error) (code, message, action string) {
+	var apiErr *tunnelclient.APIError
+	if errors.As(err, &apiErr) && apiErr.Code != "" {
+		code = apiErr.Code
+	} else {
+		var coded cliErrorCoder
+		if errors.As(err, &coded) {
+			code = coded.CLIErrorCode()
+		}
+	}
+	if code == "" {
+		code = "command_failed"
+	}
+	action = map[string]string{
+		"unauthorized":              "Check --token or TUNLEASE_TOKEN.",
+		"invalid_request":           "Check the path and command arguments.",
+		"path_claimed":              "Run tul list --all or choose a non-overlapping path.",
+		"path_not_allowed":          "Ask the gateway operator for an allowed path.",
+		"claim_limit_reached":       "Ask the gateway operator to free capacity.",
+		"owner_claim_limit_reached": "Release one of your paths and retry.",
+		"claim_expired":             "Run tul claim again.",
+		"partial_release":           "Retry the same release command for the remaining paths.",
+	}[code]
+	return code, err.Error(), action
 }

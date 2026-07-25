@@ -35,13 +35,26 @@ func NewCommand() *cobra.Command {
 func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 	var gateway, token string
 	var insecure bool
-	root := &cobra.Command{Use: "tul", Short: "Claim a 3rd-party callback path and tunnel it to your machine", SilenceUsage: true, SilenceErrors: true, Version: fmt.Sprintf("%s (%s)", version, buildTime)}
+	var output string
+	root := &cobra.Command{
+		Use:           "tul",
+		Short:         "Forward a callback path to your local service",
+		Example:       "  tul claim '/webhooks/provider' -p 8080 -g callbacks.example.com",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Version:       fmt.Sprintf("%s (%s)", version, buildTime),
+	}
+	root.AddGroup(
+		&cobra.Group{ID: "developer", Title: "Developer commands:"},
+		&cobra.Group{ID: "operator", Title: "Platform operator commands:"},
+	)
 	// Client flags live on the client subcommands (claim/list/release), not on
 	// root, so the gateway subcommand doesn't inherit irrelevant client flags.
 	addClientFlags := func(c *cobra.Command) {
-		c.Flags().StringVar(&gateway, "gateway", "", "gateway base URL (env TUNLEASE_GATEWAY)")
-		c.Flags().StringVar(&token, "token", "", "API token (env TUNLEASE_TOKEN)")
-		c.Flags().BoolVar(&insecure, "insecure", false, "skip gateway TLS verification, e.g. a self-signed gateway (env TUNLEASE_INSECURE)")
+		c.Flags().StringVarP(&gateway, "gateway", "g", "", "gateway base URL (env TUNLEASE_GATEWAY)")
+		c.Flags().StringVarP(&token, "token", "t", "", "API token (env TUNLEASE_TOKEN)")
+		c.Flags().BoolVarP(&insecure, "insecure", "k", false, "skip gateway TLS verification, e.g. a self-signed gateway (env TUNLEASE_INSECURE)")
+		c.Flags().StringVarP(&output, "output", "o", "text", "output format: text or json")
 	}
 	get := func() (*tunnelclient.Client, error) {
 		c, err := loadConfig()
@@ -59,7 +72,7 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 			c.Token = v
 		}
 		if c.Gateway == "" {
-			return nil, errors.New("gateway is required (flag, TUNLEASE_GATEWAY, or ~/.tunlease.yaml)")
+			return nil, errors.New("gateway required; retry with --gateway HOST or set TUNLEASE_GATEWAY")
 		}
 		insec := insecure || c.Insecure || os.Getenv("TUNLEASE_INSECURE") != ""
 		scheme := c.DefaultScheme
@@ -82,11 +95,20 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 	var to int
 	var detach, daemon bool
 	claimCmd := &cobra.Command{
-		Use:   "claim PATH [PATH...] --to PORT",
-		Short: "Open a tunnel that exclusively owns path(s) until it closes",
-		Args:  cobra.MinimumNArgs(1),
+		Use:     "claim PATH [PATH...] --to PORT",
+		Short:   "Temporarily forward callback path(s) to localhost",
+		GroupID: "developer",
+		Example: `  # Forward one exact path
+  tul claim '/webhooks/provider' -p 8080 -g callbacks.example.com
+
+  # Use /* for one child segment, or /** for every descendant
+  tul claim '/webhooks/*' -p 8080`,
+		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ui := newConsole(cmd.OutOrStdout(), cmd.ErrOrStderr())
+			if err := validateOutput(output); err != nil {
+				return err
+			}
+			ui := newConsoleOutput(cmd.OutOrStdout(), cmd.ErrOrStderr(), output)
 			if to < 1 || to > 65535 {
 				return errors.New("local port must be between 1 and 65535")
 			}
@@ -98,8 +120,19 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 				}
 				paths = append(paths, n)
 			}
+			c, e := get()
+			if e != nil {
+				return e
+			}
 			if e := checkLocalTarget(to); e != nil {
-				ui.warning("WARNING: localhost:%d is not accepting connections yet; claimed requests will return 502 until it starts", to)
+				if ui.json {
+					ui.emitJSON(ui.err, map[string]any{
+						"type": "warning", "code": "local_unavailable",
+						"message": fmt.Sprintf("localhost:%d is not accepting connections; start the service to receive requests", to),
+					})
+				} else {
+					ui.warning("WARNING: localhost:%d is not accepting connections; start the service to receive requests", to)
+				}
 			}
 			if detach {
 				// Non-blocking: spawn a background daemon and return once the
@@ -112,16 +145,12 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 					}
 					scheme = c.DefaultScheme
 				}
-				return runDetach(ui, paths, to, gateway, token, insecure || os.Getenv("TUNLEASE_INSECURE") != "", scheme)
-			}
-			c, e := get()
-			if e != nil {
-				return e
+				return runDetach(ui, paths, to, gateway, c.Gateway(), token, insecure || os.Getenv("TUNLEASE_INSECURE") != "", scheme)
 			}
 			return runClaim(ui, c, paths, to, daemon)
 		},
 	}
-	claimCmd.Flags().IntVar(&to, "to", 0, "local port to receive the traffic")
+	claimCmd.Flags().IntVarP(&to, "to", "p", 0, "local port to receive the traffic")
 	claimCmd.Flags().BoolVarP(&detach, "detach", "d", false, "run in the background and return immediately (stop with tul release)")
 	claimCmd.Flags().BoolVar(&daemon, "_daemon", false, "")
 	_ = claimCmd.Flags().MarkHidden("_daemon")
@@ -131,27 +160,35 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 
 	var all bool
 	listCmd := &cobra.Command{
-		Use:   "list",
-		Short: "Show your claims (--all shows everyone's)",
-		Args:  cobra.NoArgs,
+		Use:     "list",
+		Short:   "Show callback paths being forwarded",
+		GroupID: "developer",
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateOutput(output); err != nil {
+				return err
+			}
 			c, e := get()
 			if e != nil {
 				return e
 			}
-			return runList(newConsole(cmd.OutOrStdout(), cmd.ErrOrStderr()), cmd.Context(), c, all)
+			return runList(newConsoleOutput(cmd.OutOrStdout(), cmd.ErrOrStderr(), output), cmd.Context(), c, all)
 		},
 	}
-	listCmd.Flags().BoolVar(&all, "all", false, "show all owners' claims")
+	listCmd.Flags().BoolVarP(&all, "all", "a", false, "show all owners' claims")
 	addClientFlags(listCmd)
 	root.AddCommand(listCmd)
 
 	var relTo int
 	releaseCmd := &cobra.Command{
-		Use:   "release [PATH]",
-		Short: "Release a claim by path, or everything on a local port with --to",
-		Args:  cobra.MaximumNArgs(1),
+		Use:     "release [PATH]",
+		Short:   "Stop forwarding a claimed path",
+		GroupID: "developer",
+		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateOutput(output); err != nil {
+				return err
+			}
 			c, e := get()
 			if e != nil {
 				return e
@@ -162,15 +199,24 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 			if relTo == 0 && len(args) == 0 {
 				return errors.New("specify a PATH or --to PORT")
 			}
-			return runRelease(newConsole(cmd.OutOrStdout(), cmd.ErrOrStderr()), cmd.Context(), c, args, relTo)
+			return runRelease(newConsoleOutput(cmd.OutOrStdout(), cmd.ErrOrStderr(), output), cmd.Context(), c, args, relTo)
 		},
 	}
-	releaseCmd.Flags().IntVar(&relTo, "to", 0, "release all claims tunnelled to this local port")
+	releaseCmd.Flags().IntVarP(&relTo, "to", "p", 0, "release all claims tunnelled to this local port")
 	addClientFlags(releaseCmd)
 	root.AddCommand(releaseCmd)
 
-	root.AddCommand(newGatewayCommand())
+	gatewayCmd := newGatewayCommand()
+	gatewayCmd.GroupID = "operator"
+	root.AddCommand(gatewayCmd)
 	return root
+}
+
+func validateOutput(output string) error {
+	if output != "text" && output != "json" {
+		return fmt.Errorf("output must be text or json, got %q", output)
+	}
+	return nil
 }
 
 func runClaim(ui *console, c *tunnelclient.Client, paths []string, to int, daemon bool) error {
@@ -187,22 +233,29 @@ func runClaim(ui *console, c *tunnelclient.Client, paths []string, to int, daemo
 		pid = os.Getpid() // recorded so `tul release` can stop this daemon
 	}
 	st := loadState()
-	st.add(stateClaim{ClaimID: cl.ID, Gateway: c.Gateway(), Paths: cl.Paths, To: to, PID: pid})
+	st.add(stateClaim{ClaimID: cl.ID, Gateway: c.Gateway(), Paths: cl.Paths, To: to, ExpiresAt: cl.ExpiresAt, PID: pid})
 	saveState(st)
 	defer cleanupSessionState(c.Gateway(), to, cl.Paths)
 
-	if cl.ExpiresAt != nil {
-		ui.success("claimed %s until %s (claim %s)", strings.Join(cl.Paths, " "), cl.ExpiresAt.Local().Format("15:04:05"), shortID(cl.ID))
+	if ui.json {
+		ui.event(connectionEvent("connected", cl.Paths, to, cl.ExpiresAt))
 	} else {
-		ui.success("claimed %s (claim %s)", strings.Join(cl.Paths, " "), shortID(cl.ID))
+		ui.success("%s", connectionMessage("Connected", cl.Paths, to, cl.ExpiresAt))
+		pathNoun := "path"
+		if len(cl.Paths) > 1 {
+			pathNoun = "paths"
+		}
+		ui.noticeOut("Requests will appear below. Press Ctrl+C to stop forwarding and release the %s.", pathNoun)
 	}
-	ui.noticeOut("WARNING: real 3rd-party traffic for these paths now flows to localhost:%d", to)
-	ui.status("tunnel connected  (Ctrl+C to release)")
 	for {
 		select {
 		case <-ctx.Done():
 			_ = session.Close()
-			ui.info("\nreleased, tunnel closed")
+			if ui.json {
+				ui.event(map[string]any{"type": "released", "paths": cl.Paths})
+			} else {
+				ui.info("\nreleased, tunnel closed")
+			}
 			return nil
 		case event, ok := <-session.Events():
 			if !ok {
@@ -212,22 +265,73 @@ func runClaim(ui *console, c *tunnelclient.Client, paths []string, to int, daemo
 				return nil
 			}
 			switch event.Type {
+			case tunnelclient.EventTunnelDisconnected:
+				if ui.json {
+					ui.event(map[string]any{"type": "disconnected", "state": "retrying"})
+				} else {
+					ui.warningOut("Connection lost; retrying…")
+				}
 			case tunnelclient.EventTunnelReconnected:
-				ui.status("tunnel reconnected")
 				previous := cl
 				cl = event.Claim
 				st := loadState()
 				st.removeSession(c.Gateway(), to, previous.Paths)
-				st.add(stateClaim{ClaimID: cl.ID, Gateway: c.Gateway(), Paths: cl.Paths, To: to, PID: pid})
+				st.add(stateClaim{ClaimID: cl.ID, Gateway: c.Gateway(), Paths: cl.Paths, To: to, ExpiresAt: cl.ExpiresAt, PID: pid})
 				saveState(st)
-				ui.status("paths remain claimed as %s", shortID(cl.ID))
+				if ui.json {
+					ui.event(connectionEvent("reconnected", cl.Paths, to, cl.ExpiresAt))
+				} else {
+					ui.status("%s", connectionMessage("Reconnected", cl.Paths, to, cl.ExpiresAt))
+				}
 			case tunnelclient.EventLocalTargetError:
-				ui.warningOut("WARNING: request could not reach localhost:%d: %v", to, event.Err)
+				if ui.json {
+					ui.event(map[string]any{
+						"type": "local_error", "target": fmt.Sprintf("localhost:%d", to),
+						"local_port": to, "code": "local_unavailable", "message": localTargetError(event.Err),
+					})
+				} else {
+					ui.warningOut("Could not reach localhost:%d: %s", to, localTargetError(event.Err))
+				}
 			case tunnelclient.EventRequestActivity:
-				ui.activity(event.Method, event.Path, event.Status, formatActivityDuration(event.Duration))
+				if ui.json {
+					ui.event(map[string]any{
+						"type": "request", "method": event.Method, "path": event.Path,
+						"status": event.Status, "duration_ms": event.Duration.Milliseconds(),
+					})
+				} else {
+					ui.activity(event.Method, event.Path, event.Status, formatActivityDuration(event.Duration))
+				}
 			}
 		}
 	}
+}
+
+func connectionEvent(eventType string, paths []string, to int, expiresAt *time.Time) map[string]any {
+	event := map[string]any{
+		"type": eventType, "paths": paths, "target": fmt.Sprintf("localhost:%d", to), "local_port": to,
+	}
+	if expiresAt != nil {
+		event["expires_at"] = expiresAt.Format(time.RFC3339Nano)
+	}
+	return event
+}
+
+func connectionMessage(status string, paths []string, to int, expiresAt *time.Time) string {
+	if expiresAt != nil {
+		return fmt.Sprintf("%s until %s: %s → localhost:%d", status, expiresAt.Local().Format("15:04:05"), strings.Join(paths, " "), to)
+	}
+	return fmt.Sprintf("%s: %s → localhost:%d", status, strings.Join(paths, " "), to)
+}
+
+func localTargetError(err error) string {
+	if err == nil {
+		return "unknown error"
+	}
+	var syscallErr *os.SyscallError
+	if errors.As(err, &syscallErr) {
+		return syscallErr.Err.Error()
+	}
+	return err.Error()
 }
 
 func formatActivityDuration(duration time.Duration) string {
@@ -262,6 +366,7 @@ func runList(ui *console, ctx context.Context, c *tunnelclient.Client, all bool)
 		return e
 	}
 	shown := 0
+	jsonClaims := make([]map[string]any, 0)
 	for _, x := range claims {
 		s, own := mine[x.ID]
 		if !all && !own {
@@ -283,8 +388,31 @@ func runList(ui *console, ctx context.Context, c *tunnelclient.Client, all bool)
 			target = fmt.Sprintf("→ localhost:%d", s.To)
 			suffix = "  (you)"
 		}
+		if ui.json {
+			item := map[string]any{
+				"paths": x.Paths, "owner": x.Owner, "started_at": x.StartedAt.Format(time.RFC3339Nano),
+				"mine": own, "status": "connected",
+			}
+			if own {
+				item["target"] = fmt.Sprintf("localhost:%d", s.To)
+				item["local_port"] = s.To
+			}
+			if x.ExpiresAt != nil {
+				item["expires_at"] = x.ExpiresAt.Format(time.RFC3339Nano)
+			}
+			jsonClaims = append(jsonClaims, item)
+			shown++
+			continue
+		}
+		if shown == 0 {
+			ui.claimHeader()
+		}
 		ui.claimRow(strings.Join(x.Paths, ","), target, status, x.StartedAt.Local().Format("15:04:05"), suffix, own, expiring)
 		shown++
+	}
+	if ui.json {
+		ui.event(map[string]any{"type": "claim_list", "claims": jsonClaims})
+		return nil
 	}
 	if shown == 0 {
 		if all {
@@ -300,20 +428,42 @@ func runRelease(ui *console, ctx context.Context, c *tunnelclient.Client, args [
 	st := loadState()
 	if relTo > 0 {
 		released := 0
-		for _, s := range st.Claims {
-			if s.To == relTo {
+		failures := make([]releaseFailure, 0)
+		// Iterate a snapshot because successful releases remove entries from st.
+		for _, s := range append([]stateClaim(nil), st.Claims...) {
+			if s.To == relTo && s.Gateway == c.Gateway() {
 				if e := c.Release(ctx, s.ClaimID); e != nil {
-					return e
+					code, message, _ := errorDetails(e)
+					failures = append(failures, releaseFailure{Paths: s.Paths, Code: code, Message: message})
+					continue
 				}
 				stopDaemon(s) // stop the background daemon, if this was --detach
 				st.removeByID(s.ClaimID)
-				ui.success("released %s", strings.Join(s.Paths, " "))
+				// Persist each completed release so a later failure cannot
+				// resurrect stale local state.
+				saveState(st)
+				if ui.json {
+					ui.event(map[string]any{"type": "released", "paths": s.Paths, "local_port": relTo})
+				} else {
+					ui.success("released %s", strings.Join(s.Paths, " "))
+				}
 				released++
 			}
 		}
-		saveState(st)
+		if len(failures) > 0 {
+			return &partialReleaseError{
+				Released: released, Failures: failures, LocalPort: relTo, Gateway: c.Gateway(),
+			}
+		}
+		if ui.json {
+			ui.event(map[string]any{
+				"type": "release_summary", "released": released, "failed": 0,
+				"local_port": relTo, "gateway": c.Gateway(),
+			})
+			return nil
+		}
 		if released == 0 {
-			ui.info("no claims recorded for local port %d on this machine", relTo)
+			ui.info("no claims recorded for local port %d on this gateway", relTo)
 		}
 		return nil
 	}
@@ -323,14 +473,18 @@ func runRelease(ui *console, ctx context.Context, c *tunnelclient.Client, args [
 	}
 	// 先查本機 state，找不到再翻遠端（可能是別台機器留下的租約）
 	for _, s := range st.Claims {
-		if contains(s.Paths, target) {
+		if s.Gateway == c.Gateway() && contains(s.Paths, target) {
 			if e := c.Release(ctx, s.ClaimID); e != nil {
 				return e
 			}
 			stopDaemon(s) // stop the background daemon, if this was --detach
 			st.removeByID(s.ClaimID)
 			saveState(st)
-			ui.success("released %s", target)
+			if ui.json {
+				ui.event(map[string]any{"type": "released", "paths": []string{target}, "local_port": s.To})
+			} else {
+				ui.success("released %s", target)
+			}
 			return nil
 		}
 	}
@@ -343,19 +497,57 @@ func runRelease(ui *console, ctx context.Context, c *tunnelclient.Client, args [
 			if e := c.Release(ctx, x.ID); e != nil {
 				return e
 			}
-			ui.success("released %s", target)
+			if ui.json {
+				ui.event(map[string]any{"type": "released", "paths": []string{target}})
+			} else {
+				ui.success("released %s", target)
+			}
 			return nil
 		}
 	}
 	return fmt.Errorf("no active claim found for %s", target)
 }
 
-func shortID(id string) string {
-	if len(id) > 8 {
-		return id[:8]
-	}
-	return id
+type partialReleaseError struct {
+	Released  int
+	Failures  []releaseFailure
+	LocalPort int
+	Gateway   string
 }
+
+type releaseFailure struct {
+	Paths   []string `json:"paths"`
+	Code    string   `json:"code"`
+	Message string   `json:"message"`
+}
+
+func (e *partialReleaseError) Error() string {
+	failures := make([]string, 0, len(e.Failures))
+	for _, failure := range e.Failures {
+		failures = append(failures, fmt.Sprintf("%s: %s", strings.Join(failure.Paths, " "), failure.Message))
+	}
+	return fmt.Sprintf(
+		"partial release: released %d, failed %d (%s)",
+		e.Released,
+		len(e.Failures),
+		strings.Join(failures, "; "),
+	)
+}
+
+func (e *partialReleaseError) CLIErrorCode() string {
+	return "partial_release"
+}
+
+func (e *partialReleaseError) CLIErrorFields() map[string]any {
+	return map[string]any{
+		"released":   e.Released,
+		"failed":     len(e.Failures),
+		"failures":   e.Failures,
+		"local_port": e.LocalPort,
+		"gateway":    e.Gateway,
+	}
+}
+
 func contains(a []string, s string) bool {
 	for _, v := range a {
 		if v == s {

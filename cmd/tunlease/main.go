@@ -12,8 +12,10 @@ var (
 )
 
 func main() {
-	if e := cliapp.NewCommandWithVersion(version, buildTime).Execute(); e != nil {
-		cliapp.PrintError(os.Stderr, e)
+	command := cliapp.NewCommandWithVersion(version, buildTime)
+	executed, e := command.ExecuteC()
+	if e != nil {
+		cliapp.PrintCommandError(os.Stderr, executed, os.Args[1:], e)
 		os.Exit(1)
 	}
 }

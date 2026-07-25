@@ -205,6 +205,19 @@ func TestSessionReconnectReplacesClaim(t *testing.T) {
 
 	initial := session.Claim().ID
 	gateway.tunnel.CloseClaim(initial)
+	for _, want := range []tunnelclient.EventType{
+		tunnelclient.EventTunnelDisconnected,
+		tunnelclient.EventTunnelReconnected,
+	} {
+		select {
+		case event := <-session.Events():
+			if event.Type != want {
+				t.Fatalf("reconnect event = %q, want %q", event.Type, want)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("timed out waiting for %q", want)
+		}
+	}
 	eventually(t, func() bool { return session.Claim().ID != initial }, "new claim after reconnect")
 	if len(gateway.store.List()) != 1 {
 		t.Fatalf("active claims = %#v", gateway.store.List())

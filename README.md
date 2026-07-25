@@ -100,8 +100,8 @@ idempotent: provider retries and mid-request tunnel failures can produce
 duplicate delivery.
 
 See the [developer guide](docs/developer-guide.md) for configuration, lifecycle
-commands, and troubleshooting. The installers verify the published SHA-256
-checksum before replacing the binary.
+commands, `--output json` automation, and troubleshooting. The installers
+verify the published SHA-256 checksum before replacing the binary.
 
 ## Components and deployment model
 

@@ -25,6 +25,8 @@ defer session.Close()
 
 for event := range session.Events() {
     switch event.Type {
+    case tunnelclient.EventTunnelDisconnected:
+        log.Print("connection lost; retrying")
     case tunnelclient.EventTunnelReconnected:
         log.Printf("reconnected as %s", event.Claim.ID)
     case tunnelclient.EventLocalTargetError:
@@ -44,6 +46,8 @@ A trailing `/*` matches exactly one child segment; `/**` matches the path
 itself and all descendants at any depth. The session owns the paths until
 `Close` or context cancellation. A
 reconnect receives a new claim ID, available through `session.Claim()`.
+`EventTunnelDisconnected` is emitted once when retrying begins;
+`EventTunnelReconnected` follows only after the replacement is ready.
 When the gateway limits claim duration, `session.Claim().ExpiresAt` contains
 the deadline and `session.Err()` returns an API error with code
 `claim_expired` after the terminal expiry handshake.

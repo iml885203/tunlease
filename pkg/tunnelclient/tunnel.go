@@ -105,6 +105,11 @@ func reconnectLoop(
 		default:
 		}
 
+		select {
+		case reconnects <- tunnelUpdate{event: &Event{Type: EventTunnelDisconnected}}:
+		case <-ctx.Done():
+			return
+		}
 		for ctx.Err() == nil {
 			if !waitRetry(ctx, time.Second) {
 				return
