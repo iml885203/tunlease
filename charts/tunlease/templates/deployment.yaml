@@ -5,7 +5,10 @@ metadata:
   labels:
     {{- include "tunlease.labels" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.replicaCount }}
+  # Tunnel sessions are process-local; v1 intentionally runs one replica.
+  replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "tunlease.name" . }}
@@ -25,19 +28,13 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["gateway", "--config", "/etc/tunlease/config.yaml"]
-          env:
-            - name: POD_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
           ports:
             - name: http
               containerPort: 8300
-          {{- $healthz := printf "%s/healthz" (default "/_tunlease" .Values.config.controlPrefix | trimSuffix "/") }}
           readinessProbe:
-            httpGet: {path: {{ $healthz | quote }}, port: http}
+            httpGet: {path: "/_tunlease/healthz", port: http}
           livenessProbe:
-            httpGet: {path: {{ $healthz | quote }}, port: http}
+            httpGet: {path: "/_tunlease/healthz", port: http}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:

@@ -1,30 +1,47 @@
 package gatewayconfig
 
-import (
-	"errors"
-	"testing"
-)
+import "testing"
 
-func TestResolveAdvertiseHost(t *testing.T) {
-	detect := func() (string, error) { return "10.0.0.3", nil }
-	tests := []struct{ name, cfg, pod, want string }{{"configured", "host.example", "10.0.0.2", "host.example"}, {"pod", "", "10.0.0.2", "10.0.0.2"}, {"detected", "", "", "10.0.0.3"}}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, e := ResolveAdvertiseHost(tt.cfg, func(string) string { return tt.pod }, detect)
-			if e != nil || got != tt.want {
-				t.Fatalf("got %q, %v", got, e)
-			}
-		})
+func TestDefaultsAndValidation(t *testing.T) {
+	config := Config{FailOpenURL: "http://app.default.svc"}
+	config.Defaults()
+	if config.Listen != ":8300" || config.MaxClaims != 64 {
+		t.Fatalf("defaults = %+v", config)
 	}
-	_, e := ResolveAdvertiseHost("", func(string) string { return "" }, func() (string, error) { return "", errors.New("no route") })
-	if e == nil {
-		t.Fatal("expected detection error")
+	if err := config.Validate(); err != nil {
+		t.Fatal(err)
 	}
 }
 
-func TestValidateAllowsNoClientTokens(t *testing.T) {
-	cfg := Config{MaxClaims: 64, Registry: "memory"}
-	if err := cfg.Validate(); err != nil {
-		t.Fatal(err)
+func TestOriginIsRequired(t *testing.T) {
+	for _, origin := range []string{"", "redis://app", "not a url"} {
+		config := Config{MaxClaims: 64, FailOpenURL: origin}
+		if err := config.Validate(); err == nil {
+			t.Fatalf("FailOpenURL %q passed validation", origin)
+		}
+	}
+}
+
+func TestTokenValidation(t *testing.T) {
+	config := Config{
+		MaxClaims:   64,
+		FailOpenURL: "http://app",
+		Tokens:      []Token{{Owner: "alice"}},
+	}
+	if err := config.Validate(); err == nil {
+		t.Fatal("token without value passed validation")
+	}
+	config.Tokens = []Token{{Owner: "alice", Token: "same"}, {Owner: "bob", Token: "same"}}
+	if err := config.Validate(); err == nil {
+		t.Fatal("duplicate token passed validation")
+	}
+}
+
+func TestWhitelistValidation(t *testing.T) {
+	for _, prefix := range []string{"webhooks/", "/webhooks", "/webhooks/*"} {
+		config := Config{MaxClaims: 64, FailOpenURL: "http://app", Whitelist: []string{prefix}}
+		if err := config.Validate(); err == nil {
+			t.Fatalf("whitelist prefix %q passed validation", prefix)
+		}
 	}
 }

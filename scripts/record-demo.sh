@@ -18,6 +18,7 @@ cd "$(dirname "$0")/.."
 
 DOMAIN=tunlease.demo
 PORT_LOCAL=3007
+PORT_ORIGIN=3008
 TMP=$(mktemp -d)
 BIN="$TMP/bin"
 PIDS=()
@@ -42,10 +43,8 @@ export PATH="$BIN:$PATH"
 
 cat > "$TMP/demo.yaml" <<EOF
 listen: ":80"
-advertise_host: "127.0.0.1"
+fail_open_url: "http://127.0.0.1:$PORT_ORIGIN"
 max_claims: 64
-ttl_seconds: 30
-heartbeat_seconds: 10
 whitelist: ["/webhooks/"]
 EOF
 
@@ -58,10 +57,19 @@ class H(BaseHTTPRequestHandler):
 HTTPServer(('127.0.0.1', $PORT_LOCAL), H).serve_forever()
 " & PIDS+=($!)
 
+# Origin app shown before the path is claimed.
+python3 -c "
+from http.server import BaseHTTPRequestHandler, HTTPServer
+class H(BaseHTTPRequestHandler):
+    def do_GET(s): s.send_response(404); s.end_headers(); s.wfile.write(b'not found\n')
+    def log_message(s,*a): pass
+HTTPServer(('127.0.0.1', $PORT_ORIGIN), H).serve_forever()
+" & PIDS+=($!)
+
 # The gateway binds privileged :80, so start ONLY it under sudo (prompts once).
-# It fails open to the stand-in app for unclaimed paths.
+# It falls back to the stand-in origin app for unclaimed paths.
 echo "Starting the gateway on :80 (sudo — you may be prompted for your password)…"
-sudo "$BIN/tunle" serve --config "$TMP/demo.yaml" --listen ":80" --app "http://127.0.0.1:$PORT_LOCAL" >/dev/null 2>&1 &
+sudo "$BIN/tunle" gateway --config "$TMP/demo.yaml" >/dev/null 2>&1 &
 GW_PID=$!
 sleep 1
 

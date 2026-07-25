@@ -4,78 +4,92 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
-	"time"
 )
 
-type fakeClock struct{ t time.Time }
+func testMemory(max int, allowed []string) *Memory {
+	return NewMemory(max, allowed, slog.New(slog.NewTextHandler(io.Discard, nil)))
+}
 
-func (f *fakeClock) Now() time.Time { return f.t }
-func memory(f *fakeClock) *Memory {
-	return NewMemory(2, []string{"/webhooks/"}, time.Minute, f, slog.New(slog.NewTextHandler(io.Discard, nil)))
-}
-func TestTTLExpiryFreesClaimSlot(t *testing.T) {
-	f := &fakeClock{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
-	m := memory(f)
-	if _, e := m.Create("alice", []string{"/webhooks/a/*"}, ""); e != nil {
-		t.Fatal(e)
+func TestClaimLifecycle(t *testing.T) {
+	store := testMemory(2, []string{"/webhooks/"})
+	claim, err := store.Create("alice", []string{"/webhooks/a/*"}, "localhost:8080")
+	if err != nil {
+		t.Fatal(err)
 	}
-	f.t = f.t.Add(time.Minute)
-	if len(m.List()) != 0 {
-		t.Fatal("expired claim remains")
+	if len(store.List()) != 1 {
+		t.Fatal("active claim missing")
 	}
-	if _, e := m.Create("bob", []string{"/webhooks/b/*"}, ""); e != nil {
-		t.Fatalf("slot not freed: %v", e)
+	if err = store.Release("bob", claim.ID); err == nil {
+		t.Fatal("another owner released the claim")
 	}
-}
-func TestClaimLimit(t *testing.T) {
-	m := NewMemory(1, []string{"/"}, time.Minute, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	if _, e := m.Create("alice", []string{"/a/*"}, ""); e != nil {
-		t.Fatal(e)
+	if err = store.Release("alice", claim.ID); err != nil {
+		t.Fatal(err)
 	}
-	var tmc *TooManyClaims
-	if _, e := m.Create("bob", []string{"/b/*"}, ""); !errors.As(e, &tmc) {
-		t.Fatalf("expected TooManyClaims, got %v", e)
+	if err = store.Release("alice", claim.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("second release error = %v", err)
+	}
+	if len(store.List()) != 0 {
+		t.Fatal("released claim remains")
 	}
 }
-func TestHeartbeatExpiredAndMissing(t *testing.T) {
-	f := &fakeClock{time.Now()}
-	m := memory(f)
-	a, _ := m.Create("alice", []string{"/webhooks/a/*"}, "")
-	f.t = f.t.Add(time.Minute)
-	if _, e := m.Heartbeat("alice", a.ID); !errors.Is(e, ErrNotFound) {
-		t.Fatalf("expired heartbeat=%v", e)
+
+func TestConflictAndClaimLimit(t *testing.T) {
+	store := testMemory(1, nil)
+	if _, err := store.Create("alice", []string{"/a/*"}, ""); err != nil {
+		t.Fatal(err)
 	}
-	if _, e := m.Heartbeat("alice", "missing"); !errors.Is(e, ErrNotFound) {
-		t.Fatalf("missing heartbeat=%v", e)
+	var conflict *Conflict
+	if _, err := store.Create("bob", []string{"/a/b/*"}, ""); !errors.As(err, &conflict) {
+		t.Fatalf("expected Conflict, got %v", err)
+	}
+	var tooMany *TooManyClaims
+	if _, err := store.Create("bob", []string{"/b/*"}, ""); !errors.As(err, &tooMany) {
+		t.Fatalf("expected TooManyClaims, got %v", err)
 	}
 }
+
 func TestAllowlist(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
-	// A configured allowlist rejects paths outside its prefixes.
-	restricted := NewMemory(64, []string{"/webhooks/"}, time.Minute, nil, logger)
-	if _, e := restricted.Create("alice", []string{"/webhooks/a/*"}, ""); e != nil {
-		t.Fatalf("allowed prefix rejected: %v", e)
+	restricted := testMemory(64, []string{"/webhooks/"})
+	if _, err := restricted.Create("alice", []string{"/webhooks/a/*"}, ""); err != nil {
+		t.Fatalf("allowed prefix rejected: %v", err)
 	}
-	var na *NotAllowed
-	if _, e := restricted.Create("alice", []string{"/admin/*"}, ""); !errors.As(e, &na) {
-		t.Fatalf("path outside allowlist should be rejected, got %v", e)
+	var notAllowed *NotAllowed
+	if _, err := restricted.Create("alice", []string{"/admin/*"}, ""); !errors.As(err, &notAllowed) {
+		t.Fatalf("path outside allowlist should be rejected, got %v", err)
 	}
 
-	// An empty allowlist is opt-in: every valid path is allowed.
-	open := NewMemory(64, nil, time.Minute, nil, logger)
-	if _, e := open.Create("alice", []string{"/admin/*"}, ""); e != nil {
-		t.Fatalf("empty allowlist should allow any path, got %v", e)
+	open := testMemory(64, nil)
+	if _, err := open.Create("alice", []string{"/admin/*"}, ""); err != nil {
+		t.Fatalf("empty allowlist should allow any path, got %v", err)
 	}
 }
+
 func TestValidPath(t *testing.T) {
 	for _, tt := range []struct {
-		p    string
+		path string
 		want bool
-	}{{"/a/*", true}, {"a/*", false}, {"/a", false}, {"/a/*/b/*", false}, {"/*", false}} {
-		if got := ValidPath(tt.p); got != tt.want {
-			t.Errorf("ValidPath(%q)=%v", tt.p, got)
+	}{
+		{"/a/*", true},
+		{"a/*", false},
+		{"/a", false},
+		{"/a/*/b/*", false},
+		{"/*", false},
+		{"/" + strings.Repeat("a", MaxPathLength) + "/*", false},
+	} {
+		if got := ValidPath(tt.path); got != tt.want {
+			t.Errorf("ValidPath(%q)=%v", tt.path, got)
 		}
+	}
+}
+
+func TestClaimRejectsTooManyPaths(t *testing.T) {
+	paths := make([]string, MaxPathsPerClaim+1)
+	for i := range paths {
+		paths[i] = "/a/*"
+	}
+	if _, err := testMemory(64, nil).Create("alice", paths, ""); !errors.Is(err, ErrInvalidPath) {
+		t.Fatalf("too many paths error = %v", err)
 	}
 }

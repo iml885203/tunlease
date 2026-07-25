@@ -9,7 +9,7 @@ import (
 
 // state 記錄這台機器建立過的 claims（~/.tunlease/state.json），
 // 供 release --to 與 list 的 "(you)" 標記使用——API 的 list 回應沒有
-// local 欄位（spec §2.2），對得回 local port 的只有本機。
+// local 欄位，對得回 local port 的只有本機。
 type stateClaim struct {
 	ClaimID string   `json:"claim_id"`
 	Gateway string   `json:"gateway"`

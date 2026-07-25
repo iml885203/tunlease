@@ -2,129 +2,68 @@
 
 [English](architecture.md) · [繁體中文](architecture.zh-TW.md)
 
-User-facing topology、詞彙與完整 failure matrix 請先讀
-[核心概念](concepts.zh-TW.md)；本頁描述 implementation。
+Tunlease 只有四個核心概念：
 
-## 系統概觀
+- **Gateway**：位於單一 app 前方的 whole-host proxy。
+- **Origin**：原始 app，由 `fail_open_url` 指定。
+- **Tunnel session**：開發者的一條 WSS 長連線。
+- **Claimed paths**：該連線互斥擁有的 path prefix。
+
+沒有獨立 lease。WebSocket 本身就是 claim：handshake 成功便擁有 paths，
+連線結束便釋放。
+
+## Topology 與 URL
+
+既有 callback host 的 `/` 必須送到 gateway。`/_tunlease` 固定保留給 health、
+list/release 與 tunnel WebSocket；其餘都是 data traffic。Origin 必須使用不會
+繞回 public gateway 的獨立內部 URL。
 
 ```mermaid
 flowchart LR
-    ThirdParty[第三方系統]
-
-    subgraph Cluster[共用環境]
-        Ingress[既有 Ingress<br/>固定 public endpoint]
-
-        subgraph GatewayPod[tunlease-gateway Pod]
-            Router[HTTP path demux<br/>control_prefix + fail_open_url]
-            API[Claim API]
-            Registry[租約 registry<br/>staging 使用 memory]
-            TunnelServer[專用 tunnel server]
-        end
-
-        App[原始應用程式<br/>固定 endpoint workload]
+    ThirdParty["第三方"] --> Gateway["Gateway"]
+    subgraph Shared["共用環境"]
+      Gateway --> Origin["原始 app"]
     end
-
-    subgraph Developer[開發者電腦]
-        CLI[tunle CLI]
-        LocalApp[本機服務]
+    subgraph Developer["開發者電腦"]
+      CLI["tunle CLI"] --> Local["本機服務"]
     end
-
-    ThirdParty -->|固定 URL| Ingress
-    Ingress --> Router
-    Router -->|未認領或失敗| App
-    Router -->|已認領 path| TunnelServer
-    Router -->|control_prefix path| API
-    CLI -->|claim 與 heartbeat| API
-    API <--> Registry
-    CLI ==>|反向 WebSocket tunnel| TunnelServer
-    TunnelServer -->|轉送 request| LocalApp
-
-    classDef tunlease fill:#dbeafe,stroke:#2563eb,color:#1e3a8a,stroke-width:2px;
-    class CLI,Router,API,Registry,TunnelServer tunlease;
+    Gateway --> CLI
 ```
 
-藍色節點由 Tunlease 擁有並發布；其他節點是第三方系統或既有基礎設施與 app。
-Gateway 位於 app 前面並依 path 分流：`control_prefix`（預設 `/_tunlease`）
-下的 request 進 claim API，其餘是第三方流量。Control plane 包含 claim、
-heartbeat 與 lease；data plane 在 dispatch 前選擇 reverse tunnel，或在沒有
-可用 tunnel 時選擇原 app（`fail_open_url`）。Gateway 不依賴 Kubernetes API。
+## Session lifecycle
 
-## Request routing
+`GET /_tunlease/tunnel` 升級成 WebSocket。認證、path 驗證、互斥 ownership、
+tunnel 建立與 readiness 都在這次 handshake 完成。Gateway 與 client 會進行有
+timeout 的 ready/ack；未完成的連線會釋放 paths。`Start` 只會在 data channel
+可路由後返回。
 
-```mermaid
-flowchart TD
-    Request[Request 到達 gateway]
-    Control{Path 是否在<br/>control_prefix 底下?}
-    API[交給 claim API 處理]
-    Match{是否符合 active claim?}
-    Tunnel{Dispatch 前是否有<br/>connected tunnel?}
-    Local[轉到本機服務]
-    App[轉到原始 app<br/>fail_open_url]
+網路斷線會移除 server record。Client 以舊 claim ID 作為 replacement context
+重試，成功後取得新 ID；空窗期間流量送 origin。明確 release 是 terminal，
+不可自動重連；gateway 會送 release control frame，只有 client ACK 後才回成功。
 
-    Request --> Control
-    Control -->|是| API
-    Control -->|否| Match
-    Match -->|否| App
-    Match -->|是| Tunnel
-    Tunnel -->|是；後續 failure 可能回錯| Local
-    Tunnel -->|否：fail open| App
+剩餘 HTTP API：
 
-    classDef tunlease fill:#dbeafe,stroke:#2563eb,color:#1e3a8a,stroke-width:2px;
-    class Request,Control,Match,Tunnel tunlease;
-```
+- `GET /_tunlease/api/v1/claims`
+- `DELETE /_tunlease/api/v1/claims/{id}`
+- `GET /_tunlease/healthz`
 
-Gateway 對 active claim 使用 longest-prefix matching。沒有符合 claim 的 path，
-或 dispatch 前 lease 符合但 tunnel 未連線時，會走原始 app 路徑
-（`fail_open_url`）；若未設定則回 404。Dispatch 開始後才發生的 failure
-可能回錯，而不會 replay 到 origin。
+## 路由與失敗契約
 
-## Claim 生命週期
+| 狀態 | 結果 |
+|---|---|
+| Path 符合 connected session | 經 yamux 送 localhost |
+| 沒有符合的 connected session | Proxy 到 origin |
+| Dispatch 後 tunnel/local 失敗 | 回錯誤；不 replay |
+| Gateway 或 origin unavailable | 平台 outage |
 
-```mermaid
-sequenceDiagram
-    participant Dev as 開發者
-    participant CLI as tunle CLI
-    participant GW as tunlease-gateway
-    participant Local as 本機服務
-
-    Dev->>CLI: tunle claim --to 8080 /path/*
-    CLI->>GW: POST /_tunlease/api/v1/claims
-    GW-->>CLI: claim ID、TTL、heartbeat、fingerprint
-    CLI->>GW: 開啟反向 tunnel
-    loop Claim 存活期間
-        CLI->>GW: Heartbeat
-    end
-    GW->>Local: 經 tunnel 轉送符合的 callback
-    Dev->>CLI: Ctrl+C
-    CLI->>GW: DELETE claim
-```
-
-## Gateway Pod 替換
-
-使用 memory registry 時，替換 gateway Pod 會移除所有 lease 與 tunnel。這是目前單 replica 部署的預期行為：
-
-1. Replacement gateway 恢復可連線後，已無法對到舊 claim，會把 unmatched traffic proxy 回原 app。
-2. CLI reconnect 後發現 lease 不存在，建立新 claim。
-3. CLI 建立新 tunnel，gateway 註冊新 claim。
-4. 符合的 callback 恢復轉送到本機服務。
-
-Recovery 時間取決於 heartbeat interval、reconnect backoff、gateway startup、
-DNS/load-balancer 行為與 provider timing，不是 SLA。Replacement gateway 可連線前，
-request 可能在 network edge 失敗；健康後，CLI 重建 lease/tunnel 期間的 unmatched
-traffic 才能 proxy 到 origin。
+Path 必須以 `/` 開頭、`/*` 結尾，且不可有其他 `*`；每條最多 512 bytes，
+一個 session 最多 8 條，重疊 prefix 互斥。
+Gateway 傳送 HTTP method、path/query、headers、body 與 response；app 仍須處理
+provider retry 與重複 delivery。
 
 ## 部署邊界
 
-核心 protocol 不要求 Kubernetes。Kubernetes 只是目前的 packaging 與 lifecycle 模型：
-
-- Helm 部署 gateway、Service、Ingress 與 config Secret。
-- Gateway 部署在 app 前面：Ingress 把固定 endpoint 導向 gateway，gateway 的 `fail_open_url` 指向 app 的 Service。
-- Public host、path 與第三方設定完全不變。
-
-目前 data plane 需要單一 gateway replica。Redis registry 可在 restart 間保留
-lease record，但 live WebSocket session 與 tunnel selection 仍在 process 內。
-若沒有 claim-aware routing 或 shared tunnel transport，一般 multi-replica load balancing 不安全。
-
-Fail-open 是由可連線 gateway 執行的 process-local routing，不涵蓋 gateway、
-Service、Ingress、load balancer、DNS 或 origin outage。詳見
-[routing 與失敗契約](concepts.zh-TW.md#routing-與失敗契約)。
+v1 只支援單一 gateway process 與 in-memory state。WebSocket session 是
+process-local，因此多 replica 不安全。Gateway 重啟會產生 reconnect gap，
+不保留 active claim。Transport security 由外層 HTTPS/WSS 提供，tunnel
+內沒有第二層 TLS。

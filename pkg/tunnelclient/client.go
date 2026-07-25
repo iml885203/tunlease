@@ -16,15 +16,18 @@ import (
 	"time"
 )
 
+const (
+	MaxPathsPerClaim = 8
+	MaxPathLength    = 512
+)
+
 // Config configures a Client. HTTPClient is optional.
 type Config struct {
 	Gateway string
 	Token   string
 	// Insecure skips TLS certificate verification of the gateway connection
-	// (API + tunnel WebSocket). Useful for a gateway behind a self-signed
-	// certificate (self-hosted / internal). It does NOT weaken the tunnel's
-	// inner TLS, which is still pinned by fingerprint. Ignored when HTTPClient
-	// is provided.
+	// (API + tunnel WebSocket). Use only on trusted development networks.
+	// Ignored when HTTPClient is provided.
 	Insecure bool
 	// DefaultScheme is used when Gateway has no scheme. Defaults to "https".
 	// Set to "http" for a gateway without TLS (e.g. a local demo).
@@ -39,28 +42,25 @@ type Client struct {
 	http    *http.Client
 }
 
-// Claim is an active lease returned by the gateway.
+// Claim describes one active tunnel and its exclusively owned paths.
 type Claim struct {
-	ID          string    `json:"claim_id"`
-	Owner       string    `json:"owner"`
-	Paths       []string  `json:"paths"`
-	ExpiresAt   time.Time `json:"expires_at"`
-	Heartbeat   int       `json:"heartbeat_seconds"`
-	Fingerprint string    `json:"tunnel_fingerprint,omitempty"`
+	ID        string    `json:"claim_id"`
+	Owner     string    `json:"owner"`
+	Paths     []string  `json:"paths"`
+	StartedAt time.Time `json:"started_at"`
 }
 
 // APIError is a structured error returned by the gateway.
 type APIError struct {
-	Status    int       `json:"-"`
-	Code      string    `json:"error"`
-	Detail    string    `json:"detail"`
-	ClaimedBy string    `json:"claimed_by"`
-	ExpiresAt time.Time `json:"expires_at"`
+	Status    int    `json:"-"`
+	Code      string `json:"error"`
+	Detail    string `json:"detail"`
+	ClaimedBy string `json:"claimed_by"`
 }
 
 func (e *APIError) Error() string {
 	if e.Code == "path_claimed" {
-		return fmt.Sprintf("path already claimed by %s (lease expires %s)", e.ClaimedBy, e.ExpiresAt.Local().Format("15:04:05"))
+		return fmt.Sprintf("path already claimed by %s", e.ClaimedBy)
 	}
 	if e.Detail != "" {
 		return e.Detail
@@ -86,6 +86,9 @@ func NormalizePath(path string) (string, error) {
 	if strings.Contains(path, "*") {
 		return "", errors.New("wildcard is only allowed as trailing /*")
 	}
+	if len(path)+2 > MaxPathLength {
+		return "", fmt.Errorf("path must be at most %d bytes", MaxPathLength)
+	}
 	return path + "/*", nil
 }
 
@@ -93,8 +96,6 @@ func NormalizePath(path string) (string, error) {
 type EventType string
 
 const (
-	EventHeartbeatWarning  EventType = "heartbeat_warning"
-	EventLeaseReclaimed    EventType = "lease_reclaimed"
 	EventTunnelReconnected EventType = "tunnel_reconnected"
 )
 
@@ -106,11 +107,9 @@ type Event struct {
 	Err   error
 }
 
-// Session owns one claim, its heartbeat, and its reverse tunnel.
+// Session owns one active tunnel and its paths.
 type Session struct {
 	client *Client
-	paths  []string
-	to     int
 	cancel context.CancelFunc
 	done   chan struct{}
 	events chan Event
@@ -138,8 +137,7 @@ func New(cfg Config) (*Client, error) {
 	h := cfg.HTTPClient
 	if h == nil {
 		if cfg.Insecure {
-			// Skip verification of the OUTER gateway TLS only (self-signed /
-			// internal gateway). The tunnel's inner TLS stays fingerprint-pinned.
+			// Explicit opt-in for a self-signed gateway on a trusted network.
 			h = &http.Client{Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // opt-in for self-signed gateways
 			}}
@@ -150,12 +148,8 @@ func New(cfg Config) (*Client, error) {
 	return &Client{gateway: base, token: cfg.Token, http: h}, nil
 }
 
-// normalizeGateway turns user-friendly input into the control-plane base URL.
-// The scheme may be omitted; it defaults to defaultScheme (https unless
-// overridden), so `myapp.example.com` becomes `https://myapp.example.com`. When
-// only a host is given (no path), the default control-plane prefix is appended,
-// so the API/tunnel land under it. A user who supplies an explicit scheme or
-// path is trusted as-is (advanced / different-domain).
+// normalizeGateway accepts only the supported whole-host topology and appends
+// the fixed control-plane prefix.
 func normalizeGateway(gateway, defaultScheme string) (string, error) {
 	if gateway == "" {
 		return "", errors.New("gateway is required")
@@ -170,10 +164,10 @@ func normalizeGateway(gateway, defaultScheme string) (string, error) {
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return "", errors.New("gateway must be a host or an http(s) URL")
 	}
-	u.Path = strings.TrimRight(u.Path, "/")
-	if u.Path == "" {
-		u.Path = DefaultControlPrefix
+	if strings.TrimRight(u.Path, "/") != "" {
+		return "", errors.New("gateway must not include a path")
 	}
+	u.Path = DefaultControlPrefix
 	u.RawQuery = ""
 	u.Fragment = ""
 	return u.String(), nil
@@ -182,12 +176,11 @@ func normalizeGateway(gateway, defaultScheme string) (string, error) {
 // Gateway returns the normalized gateway base URL used by the client.
 func (c *Client) Gateway() string { return c.gateway }
 
-// Start claims paths and establishes the tunnel before returning. The session
-// keeps its lease alive until ctx is cancelled, Close is called, or a terminal
-// error occurs.
+// Start claims paths by establishing a tunnel. The paths remain owned until
+// ctx is cancelled or Close is called.
 func (c *Client) Start(ctx context.Context, paths []string, localPort int) (*Session, error) {
-	if len(paths) == 0 {
-		return nil, errors.New("at least one path is required")
+	if len(paths) == 0 || len(paths) > MaxPathsPerClaim {
+		return nil, fmt.Errorf("between 1 and %d paths are required", MaxPathsPerClaim)
 	}
 	if localPort < 1 || localPort > 65535 {
 		return nil, errors.New("local port must be between 1 and 65535")
@@ -200,24 +193,18 @@ func (c *Client) Start(ctx context.Context, paths []string, localPort int) (*Ses
 		}
 		normalized = append(normalized, canonical)
 	}
-	claim, err := c.create(ctx, normalized, localPort)
-	if err != nil {
-		return nil, err
-	}
 	sctx, cancel := context.WithCancel(ctx)
-	stopTunnel, err := startTunnel(sctx, c, claim.ID, claim.Fingerprint, localPort)
+	claim, reconnects, stopTunnel, err := startTunnel(sctx, c, normalized, localPort)
 	if err != nil {
 		cancel()
-		c.releaseQuietly(claim.ID)
 		return nil, err
 	}
-	s := &Session{client: c, paths: normalized, to: localPort, cancel: cancel, done: make(chan struct{}), events: make(chan Event, 8), claim: claim}
-	go s.run(sctx, stopTunnel)
+	s := &Session{client: c, cancel: cancel, done: make(chan struct{}), events: make(chan Event, 8), claim: claim}
+	go s.run(sctx, reconnects, stopTunnel)
 	return s, nil
 }
 
-// Claim returns the session's current claim. Its ID may change after an
-// expired lease is reclaimed.
+// Claim returns the current live tunnel. Its ID changes after reconnect.
 func (s *Session) Claim() Claim {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -230,7 +217,7 @@ func (s *Session) Claim() Claim {
 // must not depend on receiving every event for correctness.
 func (s *Session) Events() <-chan Event { return s.events }
 
-// Done closes when the session has released its claim or failed terminally.
+// Done closes when the session has released its tunnel or failed terminally.
 func (s *Session) Done() <-chan struct{} { return s.done }
 
 // Err returns the terminal session error, or nil after a normal close.
@@ -240,62 +227,34 @@ func (s *Session) Err() error {
 	return s.err
 }
 
-// Close releases the claim and waits for the session to stop.
+// Close releases the paths and waits for the tunnel to stop.
 func (s *Session) Close() error {
 	s.once.Do(s.cancel)
 	<-s.done
 	return s.Err()
 }
 
-func (s *Session) run(ctx context.Context, stopTunnel context.CancelFunc) {
+func (s *Session) run(ctx context.Context, reconnects <-chan tunnelUpdate, stopTunnel context.CancelFunc) {
 	defer close(s.done)
 	defer close(s.events)
 	defer func() { stopTunnel() }()
-	defer func() { s.client.releaseQuietly(s.Claim().ID) }()
-
-	hb := time.Duration(s.Claim().Heartbeat) * time.Second
-	if hb < time.Second {
-		hb = 30 * time.Second
-	}
-	ticker := time.NewTicker(hb)
-	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			current := s.Claim()
-			fingerprint, err := s.client.heartbeat(ctx, current.ID)
-			var apiErr *APIError
-			switch {
-			case errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound:
-				stopTunnel()
-				next, createErr := s.client.create(ctx, s.paths, s.to)
-				if createErr != nil {
-					s.setError(fmt.Errorf("re-claim failed: %w", createErr))
-					return
+		case update, ok := <-reconnects:
+			if !ok {
+				if ctx.Err() == nil {
+					s.setError(errors.New("tunnel stopped"))
 				}
-				stopTunnel, createErr = startTunnel(ctx, s.client, next.ID, next.Fingerprint, s.to)
-				if createErr != nil {
-					s.client.releaseQuietly(next.ID)
-					s.setError(fmt.Errorf("reconnect tunnel: %w", createErr))
-					return
-				}
-				s.setClaim(next)
-				s.emit(Event{Type: EventLeaseReclaimed, Claim: next})
-			case err != nil && ctx.Err() == nil:
-				s.emit(Event{Type: EventHeartbeatWarning, Claim: current, Err: err})
-			case fingerprint != "" && fingerprint != current.Fingerprint:
-				stopTunnel()
-				stopTunnel, err = startTunnel(ctx, s.client, current.ID, fingerprint, s.to)
-				if err != nil {
-					s.setError(fmt.Errorf("reconnect tunnel: %w", err))
-					return
-				}
-				current.Fingerprint = fingerprint
-				s.setClaim(current)
-				s.emit(Event{Type: EventTunnelReconnected, Claim: current})
+				return
 			}
+			if update.err != nil {
+				s.setError(update.err)
+				return
+			}
+			s.setClaim(update.claim)
+			s.emit(Event{Type: EventTunnelReconnected, Claim: update.claim})
 		}
 	}
 }
@@ -333,26 +292,6 @@ func (c *Client) List(ctx context.Context) ([]Claim, error) {
 // Release releases a claim by ID.
 func (c *Client) Release(ctx context.Context, claimID string) error {
 	return c.do(ctx, http.MethodDelete, "/api/v1/claims/"+url.PathEscape(claimID), nil, nil)
-}
-
-func (c *Client) create(ctx context.Context, paths []string, localPort int) (Claim, error) {
-	var out Claim
-	err := c.do(ctx, http.MethodPost, "/api/v1/claims", map[string]any{"paths": paths, "local": fmt.Sprintf("localhost:%d", localPort)}, &out)
-	return out, err
-}
-
-func (c *Client) heartbeat(ctx context.Context, id string) (string, error) {
-	var out struct {
-		Fingerprint string `json:"tunnel_fingerprint"`
-	}
-	err := c.do(ctx, http.MethodPost, "/api/v1/claims/"+url.PathEscape(id)+"/heartbeat", nil, &out)
-	return out.Fingerprint, err
-}
-
-func (c *Client) releaseQuietly(id string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	_ = c.Release(ctx, id)
 }
 
 func (c *Client) do(ctx context.Context, method, endpoint string, in, out any) error {

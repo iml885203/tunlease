@@ -1,8 +1,17 @@
 package gatewayd
 
 import (
+	"context"
+	"io"
+	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/coder/websocket"
+
+	"github.com/iml885203/tunlease/internal/registry"
 )
 
 func TestTunnelAuthenticationModes(t *testing.T) {
@@ -20,5 +29,48 @@ func TestTunnelAuthenticationModes(t *testing.T) {
 	principal, ok = authenticate(tokens, request)
 	if !ok || principal.Owner != "alice" {
 		t.Fatalf("token principal = %#v, %v", principal, ok)
+	}
+}
+
+func TestIncompleteTunnelHandshakeReleasesClaim(t *testing.T) {
+	store := registry.NewMemory(64, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	tunnel := NewTunnel(store, nil)
+	tunnel.setup = 50 * time.Millisecond
+	origin := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "origin")
+	})
+	server := httptest.NewServer((&Server{Store: store, Tunnel: tunnel, FailOpen: origin}).Handler())
+	defer server.Close()
+
+	headers := http.Header{}
+	headers.Set(headerPaths, `["/callback/*"]`)
+	headers.Set(headerLocal, "localhost:8080")
+	ws, response, err := websocket.Dial(context.Background(), "ws"+server.URL[len("http"):]+ControlPrefix+"/tunnel", &websocket.DialOptions{
+		HTTPHeader: headers,
+	})
+	if response != nil && response.Body != nil {
+		defer func() { _ = response.Body.Close() }()
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ws.CloseNow() }()
+
+	response, err = server.Client().Get(server.URL + "/callback/request-during-setup")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(response.Body)
+	_ = response.Body.Close()
+	if err != nil || string(body) != "origin" {
+		t.Fatalf("request during setup = %q, %v", body, err)
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for len(store.List()) != 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if claims := store.List(); len(claims) != 0 {
+		t.Fatalf("incomplete handshake retained claim: %#v", claims)
 	}
 }

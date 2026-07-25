@@ -1,32 +1,30 @@
 package cliapp
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"os/signal"
+	"strings"
+	"syscall"
 	"time"
 
 	"github.com/iml885203/tunlease/internal/gatewayconfig"
 	"github.com/iml885203/tunlease/internal/gatewayd"
 	"github.com/iml885203/tunlease/internal/registry"
-	"github.com/redis/go-redis/v9"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
 
-// buildFailOpen returns a reverse proxy to the given app URL, or nil if empty.
-// Unmatched third-party requests are proxied here (the original application);
-// nil means unmatched requests get a 404.
-func buildFailOpen(appURL string) (http.Handler, error) {
-	if appURL == "" {
-		return nil, nil
-	}
-	target, err := url.Parse(appURL)
-	if err != nil || target.Scheme == "" || target.Host == "" {
-		return nil, fmt.Errorf("invalid fail-open URL %q", appURL)
+func buildOriginProxy(originURL string) (*httputil.ReverseProxy, error) {
+	target, err := url.Parse(originURL)
+	if err != nil || (target.Scheme != "http" && target.Scheme != "https") || target.Host == "" {
+		return nil, fmt.Errorf("invalid fail-open URL %q", originURL)
 	}
 	return httputil.NewSingleHostReverseProxy(target), nil
 }
@@ -35,10 +33,10 @@ func newGatewayCommand() *cobra.Command {
 	var configPath string
 	cmd := &cobra.Command{
 		Use:   "gateway",
-		Short: "Run the gateway: claim API, lease registry, and reverse-tunnel server",
+		Short: "Run the whole-host gateway and reverse-tunnel server",
 		Args:  cobra.NoArgs,
-		RunE: func(*cobra.Command, []string) error {
-			return runGateway(configPath)
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runGateway(cmd.Context(), configPath)
 		},
 	}
 	cmd.Flags().StringVar(&configPath, "config", "/etc/tunlease/config.yaml", "YAML config")
@@ -46,75 +44,77 @@ func newGatewayCommand() *cobra.Command {
 }
 
 func loadGatewayConfig(path string) (gatewayconfig.Config, error) {
-	var c gatewayconfig.Config
-	b, err := os.ReadFile(path)
+	var config gatewayconfig.Config
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return c, err
+		return config, err
 	}
-	if err = yaml.Unmarshal(b, &c); err != nil {
-		return c, err
+	decoder := yaml.NewDecoder(strings.NewReader(string(data)))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&config); err != nil {
+		return config, err
 	}
-	c.Defaults()
-	if err = c.Validate(); err != nil {
-		return c, err
+	config.Defaults()
+	if err := config.Validate(); err != nil {
+		return config, err
 	}
-	return c, nil
+	return config, nil
 }
 
-func buildStore(c gatewayconfig.Config, ttl time.Duration, logger *slog.Logger) (registry.Store, error) {
-	if c.Registry == "redis" {
-		opts, err := redis.ParseURL(c.RedisURL)
-		if err != nil {
-			return nil, fmt.Errorf("parse redis_url: %w", err)
-		}
-		return registry.NewRedis(redis.NewClient(opts), c.RedisPrefix, c.MaxClaims, c.Whitelist, ttl, logger), nil
-	}
-	return registry.NewMemory(c.MaxClaims, c.Whitelist, ttl, nil, logger), nil
-}
-
-func gatewayTokens(c gatewayconfig.Config) map[string]gatewayd.Token {
+func gatewayTokens(config gatewayconfig.Config) map[string]gatewayd.Token {
 	tokens := map[string]gatewayd.Token{}
-	for _, t := range c.Tokens {
-		tokens[t.Token] = gatewayd.Token{Owner: t.Owner}
+	for _, token := range config.Tokens {
+		tokens[token.Token] = gatewayd.Token{Owner: token.Owner}
 	}
 	return tokens
 }
 
-func runGateway(configPath string) error {
-	c, err := loadGatewayConfig(configPath)
+func runGateway(parent context.Context, configPath string) error {
+	config, err := loadGatewayConfig(configPath)
 	if err != nil {
 		return err
 	}
-	host, err := gatewayconfig.ResolveAdvertiseHost(c.AdvertiseHost, nil, nil)
-	if err != nil {
-		return fmt.Errorf("resolve advertise_host: %w", err)
-	}
+
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
-	if len(c.Tokens) == 0 {
+	if len(config.Tokens) == 0 {
 		logger.Warn("client authentication is disabled; only suitable for a trusted network")
 	}
-	tokens := gatewayTokens(c)
-	ttl := time.Duration(c.TTLSeconds) * time.Second
-	store, err := buildStore(c, ttl, logger)
+
+	store := registry.NewMemory(config.MaxClaims, config.Whitelist, logger)
+	tunnel := gatewayd.NewTunnel(store, gatewayTokens(config))
+	origin, err := buildOriginProxy(config.FailOpenURL)
 	if err != nil {
 		return err
 	}
-	tunnel, err := gatewayd.NewTunnel(store, tokens)
-	if err != nil {
-		return fmt.Errorf("create tunnel server: %w", err)
+	gateway := &gatewayd.Server{Store: store, Tokens: gatewayTokens(config), Tunnel: tunnel, FailOpen: origin}
+
+	ctx, stop := signal.NotifyContext(parent, syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	server := &http.Server{
+		Addr:              config.Listen,
+		Handler:           gateway.Handler(),
+		ReadHeaderTimeout: 5 * time.Second,
 	}
-	failOpen, err := buildFailOpen(c.FailOpenURL)
-	if err != nil {
-		return err
-	}
-	srv := &gatewayd.Server{Store: store, Tokens: tokens, TTL: ttl, Heartbeat: time.Duration(c.HeartbeatSeconds) * time.Second, TunnelHost: host, Tunnel: tunnel, TunnelFingerprint: tunnel.Fingerprint(), OnChange: tunnel.Sync, ControlPrefix: c.ControlPrefix, FailOpen: failOpen}
-	// Lease expiry is lazy; periodic sync closes sessions whose claims expired.
-	go func() {
-		for range time.Tick(10 * time.Second) {
-			tunnel.Sync()
+	logger.Info("gateway listening", "addr", config.Listen, "origin", config.FailOpenURL)
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- server.ListenAndServe() }()
+	select {
+	case err = <-serveErr:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
 		}
-	}()
-	logger.Info("gateway listening", "addr", c.Listen, "advertise_host", host)
-	return http.ListenAndServe(c.Listen, srv.Handler())
+		return nil
+	case <-ctx.Done():
+		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := server.Shutdown(shutdown); err != nil {
+			return err
+		}
+		err = <-serveErr
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
+	}
 }

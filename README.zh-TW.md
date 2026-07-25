@@ -13,7 +13,7 @@ tunle claim /webhooks/stripe/* --to 8080 --gateway staging.myapp.com
 
 跟 ngrok/localtunnel/bore 不同，它**不會**給你一個新 URL。[與其他工具的比較](#與其他工具的比較)。
 
-[核心概念與 URL 對照](docs/concepts.zh-TW.md) · [任務索引](docs/tasks.zh-TW.md) · [開發者快速上手](#開發者快速上手) · [平台部署](docs/platform-deployment.zh-TW.md) · [疑難排解](docs/developer-guide.zh-TW.md#疑難排解)
+[開發者快速上手](#開發者快速上手) · [平台部署](docs/platform-deployment.zh-TW.md) · [架構](docs/architecture.zh-TW.md) · [疑難排解](docs/developer-guide.zh-TW.md#疑難排解)
 
 [English](README.md) · [繁體中文](README.zh-TW.md)
 
@@ -44,10 +44,10 @@ flowchart LR
 Gateway 接收固定 host 的流量並依 path 分流：**已認領**且 tunnel 已連線的 path
 到達你的電腦；其他 path proxy 到設定的原 app。藍色節點是 Tunlease 的；其餘本來就存在。
 
-安全模型包含 path allowlist、互斥且有 TTL 的租約、可選 token 認證、audit log 與
-fail-open routing。Fail-open 涵蓋 gateway 健康時未符合的 path 與無法使用的 developer
-tunnel；gateway 本身的 availability 仍需一般平台 HA 或 bypass 規劃。詳見
-[routing 與失敗契約](docs/concepts.zh-TW.md#routing-與失敗契約)。
+安全模型包含 path allowlist、互斥的 connected tunnel、可選 token 認證、audit log 與
+origin fallback。Fallback 只涵蓋 dispatch 前沒有 matching connected session 的 request。
+Gateway、Ingress 與 origin outage 需另外規劃 infrastructure 或 bypass。詳見
+[路由與失敗契約](docs/architecture.zh-TW.md#路由與失敗契約)。
 
 ## 與其他工具的比較
 
@@ -62,7 +62,7 @@ tunnel；gateway 本身的 availability 仍需一般平台 HA 或 bypass 規劃�
 | 保留第三方既有的固定 URL | ✅ | ❌ | ❌ | ❌ |
 | 只 claim 一條 path，其餘不動 | ✅ | ❌ | ❌ | ❌ |
 | Fail-open 回真正的 app | ✅ | ❌ | ❌ | ❌ |
-| 互斥租約、多開發者共用一個 URL | ✅ | ❌ | ❌ | ❌ |
+| 互斥 path、多開發者共用一個 URL | ✅ | ❌ | ❌ | ❌ |
 | 可自架 | ✅ | ❌ | ✅ | ✅ |
 
 ## 開發者快速上手
@@ -84,7 +84,7 @@ irm https://YOUR_TUNLEASE_HOST/install/install.ps1 | iex
 ```
 
 接著用一行命令認領 path——用 `--gateway` 指向 gateway（就填平台團隊給你的網域），
-用 `--to` 把 path 轉到本機 port。Ctrl+C 釋放租約。scheme 預設為 `https`，可以省略；
+用 `--to` 把 path 轉到本機 port。Ctrl+C 釋放 path。scheme 預設為 `https`，可以省略；
 若 gateway 沒有 TLS（例如 localhost）就明確加上 `http://`。control plane 的路徑前綴由
 client 自動附加，所以不用自己在網址裡加 `/_tunlease`。
 
@@ -130,26 +130,22 @@ Windows amd64 使用 Tunlease 專用的 tunnel transport。PowerShell installer 
 
 | 命令 | 執行於 | 職責 |
 |---|---|---|
-| `tunle claim`（及 `list` / `release`） | 開發者電腦 | Claim 一條 path、持有租約、反向 tunnel、heartbeat |
-| `tunle gateway` | 前置於 app | API、租約 registry、反向 tunnel server、path 分流與 fail-open 回 app |
-| `tunle serve` | 單機、前置單一 app | `gateway` 的便利包裝，把 `fail_open_url` 設為 `--app` |
+| `tunle claim`（及 `list` / `release`） | 開發者電腦 | 把一條 path 連到本機服務 |
+| `tunle gateway` | 前置於 app | 管理 active path、終止 tunnel、路由 request 並 proxy 到原 app |
 
 Gateway 位於 app 前面，並包辦 server 端所有事情。它把 control plane 放在
-`control_prefix`（預設 `/_tunlease`）底下；其餘 path 都是第三方流量——符合 claim
-時 tunnel 給開發者，否則 proxy 回 `fail_open_url`（原始 app），再否則 404。
+固定的 `/_tunlease` 底下；其餘 path 都是第三方流量——符合 claim
+時 tunnel 給開發者，否則 proxy 回必填的 `fail_open_url`（原始 app）。
 沒有獨立的 sidecar process。
 
-- **單機、單一 app** — 跑 `tunle serve --app http://localhost:3000`。一個 process
-  前置該 app：被 claim 的 path tunnel 給開發者，其餘一律 fail-open 回 app。不需要
-  Kubernetes。
-- **共用平台** — 跑 `tunle gateway`，把 `fail_open_url` 指向 app 的 Service，並將
+- **任何環境、單一 app origin** — 跑 `tunle gateway`，把 `fail_open_url` 指向 app 的 Service，並將
   gateway 部署在 app 前面（Ingress → gateway）。這是 Helm chart 部署的模型。
 
 Gateway 不會呼叫 Kubernetes API，因此 Kubernetes 不是必要條件——它只是平台模型的建議部署目標。
 
 ## 嵌入 tunnel client
 
-Go 應用程式可以直接嵌入獨立 CLI 使用的同一套 claim、lease、重新連線與 tunnel engine，應用程式的使用者不需要另外安裝 `tunle` binary。
+Go 應用程式可以直接嵌入相同的 path ownership、重新連線與 tunnel engine，使用者不需要另外安裝 `tunle` binary。
 
 ```bash
 go get github.com/iml885203/tunlease/pkg/tunnelclient@latest
@@ -166,27 +162,21 @@ make build      # 建置 tunle binary 到 bin/
 make test       # 執行 Go tests
 make lint       # 執行固定版本的 golangci-lint container
 make preflight  # build、vet、race test、lint 與格式檢查
-make e2e        # Redis + gateway + app + 真實 CLI
+make e2e        # gateway + origin app + local app + 真實 CLI
 ```
 
 ## 依角色閱讀
 
-- **任何需要理解模型的人：**[核心概念與 URL 對照](docs/concepts.zh-TW.md)——canonical topology、詞彙、routing/failure matrix、HTTP trust boundary 與部署限制（[English](docs/concepts.md)）
-- **第一次導入 Tunlease 的團隊：**[導入指南](docs/adoption-guide.zh-TW.md)——從適用情境、image、部署、開發者 claim 到完整流程驗證（[English](docs/adoption-guide.md)）
 - **要接第三方 callback 的開發者：**[開發者指南](docs/developer-guide.zh-TW.md)——安裝、設定、CLI 與疑難排解（[English](docs/developer-guide.md)）
-- **要自架 gateway 的平台團隊：**[平台部署指南 → 安裝 Gateway](docs/platform-deployment.zh-TW.md#安裝-gateway)——自架前提（image、Ingress、DNS/TLS）、Helm 安裝與安全（[English](docs/platform-deployment.md#install-the-gateway)）
-- **要前置 app 的 service owner：**[平台部署指南 → 用 Gateway 前置 App](docs/platform-deployment.zh-TW.md#用-gateway-前置-app)——把 gateway 部署在 app 前面，並將 `fail_open_url` 指向 app 的 Service（[English](docs/platform-deployment.md#front-the-app-with-the-gateway)）
+- **平台與 service owner：**[平台部署指南](docs/platform-deployment.zh-TW.md)——whole-host routing、必填 origin、Helm、rollout 與安全（[English](docs/platform-deployment.md)）
 - **要理解或修改系統的貢獻者：**[架構](docs/architecture.zh-TW.md)——control/data plane、routing 與復原流程（[English](docs/architecture.md)）
 - **要在 Go 應用程式嵌入 tunnel 的開發者：**[嵌入 Go client](docs/go-client.zh-TW.md)——module 設定、lifecycle API、錯誤與測試（[English](docs/go-client.md)）
 
 ## 目前狀態
 
-v0.1 產品 baseline 已完成。Gateway、CLI 與可重用 Go client 皆可運作：public endpoint → localhost tunnel、fail-open、in-memory 與可選的 Redis registry、安裝與自動更新，以及跨平台（Linux/macOS/Windows）binary 都已具備。
-
-單一 gateway replica 搭配 memory registry 是目前支援的 data-plane 部署。
-Gateway 重啟會清掉 lease；gateway 恢復可連線後，CLI 會重新 claim 並重建 tunnel。
-Redis 可保留 lease record，但 tunnel session 仍在單一 process，因此只有 Redis
-並不能安全支援多 gateway replica。
+Gateway、CLI 與可重用 Go client 皆可運作。目前刻意只支援單一 gateway
+replica：active path 與 WebSocket session 在同一 process。Gateway 重啟會斷線；
+恢復後，仍在執行的 client 會重新連線並登記 path。
 
 ## 參與貢獻
 

@@ -11,17 +11,18 @@ import (
 	"time"
 )
 
-var ErrNotFound = errors.New("claim expired")
+var (
+	ErrInvalidPath = errors.New("invalid claim path")
+	ErrNotFound    = errors.New("claim not found")
+)
 
-var ErrInvalidPath = errors.New("invalid claim path")
-
-func ValidPath(p string) bool {
-	return strings.HasPrefix(p, "/") && strings.HasSuffix(p, "/*") && len(p) > 2 && !strings.Contains(strings.TrimSuffix(p, "/*"), "*")
-}
+const (
+	MaxPathsPerClaim = 8
+	MaxPathLength    = 512
+)
 
 type Conflict struct {
-	Owner     string
-	ExpiresAt time.Time
+	Owner string
 }
 
 func (e *Conflict) Error() string { return "path claimed" }
@@ -34,84 +35,83 @@ type TooManyClaims struct{}
 
 func (*TooManyClaims) Error() string { return "claim limit reached" }
 
-type Clock interface{ Now() time.Time }
-type RealClock struct{}
-
-func (RealClock) Now() time.Time { return time.Now() }
-
 type Claim struct {
-	ID        string    `json:"claim_id"`
-	Owner     string    `json:"owner"`
-	Paths     []string  `json:"paths"`
-	Local     string    `json:"local,omitempty"`
-	ExpiresAt time.Time `json:"expires_at"`
+	ID      string    `json:"claim_id"`
+	Owner   string    `json:"owner"`
+	Paths   []string  `json:"paths"`
+	Local   string    `json:"-"`
+	Started time.Time `json:"started_at"`
 }
+
+// Store contains only claims backed by a live tunnel session. There is no
+// independent lease lifecycle: the tunnel creates the claim and releases it
+// when the connection closes.
 type Store interface {
 	Create(owner string, paths []string, local string) (Claim, error)
-	Heartbeat(owner, id string) (time.Time, error)
-	Release(owner, id string, admin bool) error
+	Release(owner, id string) error
 	List() []Claim
-	ReleaseByPath(owner, path string) error
-	ReleaseByLocalPort(owner string, port int) []Claim
-	Version() uint64
 }
+
 type Memory struct {
 	mu      sync.Mutex
 	claims  map[string]Claim
 	max     int
 	allowed []string
-	ttl     time.Duration
-	clock   Clock
-	version uint64
 	log     *slog.Logger
 }
 
-func NewMemory(maxClaims int, allowed []string, ttl time.Duration, clock Clock, logger *slog.Logger) *Memory {
-	if clock == nil {
-		clock = RealClock{}
-	}
+func NewMemory(maxClaims int, allowed []string, logger *slog.Logger) *Memory {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Memory{claims: map[string]Claim{}, max: maxClaims, allowed: allowed, ttl: ttl, clock: clock, log: logger}
-}
-func prefix(p string) string { return strings.TrimSuffix(p, "*") }
-func overlap(a, b string) bool {
-	return strings.HasPrefix(prefix(a), prefix(b)) || strings.HasPrefix(prefix(b), prefix(a))
-}
-func (m *Memory) expireLocked() {
-	now := m.clock.Now()
-	for id, c := range m.claims {
-		if !c.ExpiresAt.After(now) {
-			delete(m.claims, id)
-			m.version++
-			m.log.Info("lease audit", "event", "expire", "who", c.Owner, "when", now.UTC(), "paths", c.Paths, "claim_id", id)
-		}
+	return &Memory{
+		claims:  map[string]Claim{},
+		max:     maxClaims,
+		allowed: append([]string(nil), allowed...),
+		log:     logger,
 	}
 }
+
+func ValidPath(path string) bool {
+	return strings.HasPrefix(path, "/") &&
+		strings.HasSuffix(path, "/*") &&
+		len(path) > 2 &&
+		len(path) <= MaxPathLength &&
+		!strings.Contains(strings.TrimSuffix(path, "/*"), "*")
+}
+
+func prefix(path string) string { return strings.TrimSuffix(path, "*") }
+
+func overlap(a, b string) bool {
+	return strings.HasPrefix(prefix(a), prefix(b)) ||
+		strings.HasPrefix(prefix(b), prefix(a))
+}
+
 func (m *Memory) Create(owner string, paths []string, local string) (Claim, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.expireLocked()
-	for _, p := range paths {
-		if !ValidPath(p) {
+
+	if len(paths) == 0 || len(paths) > MaxPathsPerClaim {
+		return Claim{}, ErrInvalidPath
+	}
+	for _, path := range paths {
+		if !ValidPath(path) {
 			return Claim{}, ErrInvalidPath
 		}
-		// An empty allowlist allows every path — the allowlist is opt-in.
-		// Configure prefixes to restrict which paths may be claimed.
-		ok := len(m.allowed) == 0
-		for _, a := range m.allowed {
-			if strings.HasPrefix(prefix(p), a) {
-				ok = true
+		allowed := len(m.allowed) == 0
+		for _, candidate := range m.allowed {
+			if strings.HasPrefix(prefix(path), candidate) {
+				allowed = true
+				break
 			}
 		}
-		if !ok {
-			return Claim{}, &NotAllowed{p}
+		if !allowed {
+			return Claim{}, &NotAllowed{Path: path}
 		}
-		for _, c := range m.claims {
-			for _, q := range c.Paths {
-				if overlap(p, q) {
-					return Claim{}, &Conflict{c.Owner, c.ExpiresAt}
+		for _, existing := range m.claims {
+			for _, claimedPath := range existing.Paths {
+				if overlap(path, claimedPath) {
+					return Claim{}, &Conflict{Owner: existing.Owner}
 				}
 			}
 		}
@@ -119,91 +119,53 @@ func (m *Memory) Create(owner string, paths []string, local string) (Claim, erro
 	if len(m.claims) >= m.max {
 		return Claim{}, &TooManyClaims{}
 	}
-	b := make([]byte, 16)
-	_, _ = rand.Read(b)
-	id := hex.EncodeToString(b)
-	c := Claim{ID: id, Owner: owner, Paths: append([]string(nil), paths...), Local: local, ExpiresAt: m.clock.Now().Add(m.ttl).UTC()}
-	m.claims[id] = c
-	m.version++
-	m.log.Info("lease audit", "event", "claim", "who", owner, "when", m.clock.Now().UTC(), "paths", paths, "claim_id", id)
-	return c, nil
-}
-func (m *Memory) Heartbeat(owner, id string) (time.Time, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.expireLocked()
-	c, ok := m.claims[id]
-	if !ok || c.Owner != owner {
-		return time.Time{}, ErrNotFound
+
+	random := make([]byte, 16)
+	if _, err := rand.Read(random); err != nil {
+		return Claim{}, err
 	}
-	c.ExpiresAt = m.clock.Now().Add(m.ttl).UTC()
-	m.claims[id] = c
-	m.version++
-	return c.ExpiresAt, nil
+	now := time.Now().UTC()
+	claim := Claim{
+		ID:      hex.EncodeToString(random),
+		Owner:   owner,
+		Paths:   append([]string(nil), paths...),
+		Local:   local,
+		Started: now,
+	}
+	m.claims[claim.ID] = claim
+	m.log.Info("tunnel audit", "event", "connect", "who", owner, "when", now, "paths", paths, "claim_id", claim.ID)
+	return clone(claim), nil
 }
-func (m *Memory) Release(owner, id string, admin bool) error {
+
+func (m *Memory) Release(owner, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.expireLocked()
-	c, ok := m.claims[id]
+
+	claim, ok := m.claims[id]
 	if !ok {
-		return nil
+		return ErrNotFound
 	}
-	if c.Owner != owner && !admin {
+	if claim.Owner != owner {
 		return errors.New("forbidden")
 	}
 	delete(m.claims, id)
-	m.version++
-	m.log.Info("lease audit", "event", "release", "who", owner, "when", m.clock.Now().UTC(), "paths", c.Paths, "claim_id", id)
+	m.log.Info("tunnel audit", "event", "disconnect", "who", owner, "when", time.Now().UTC(), "paths", claim.Paths, "claim_id", id)
 	return nil
 }
+
 func (m *Memory) List() []Claim {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.expireLocked()
+
 	out := make([]Claim, 0, len(m.claims))
-	for _, c := range m.claims {
-		out = append(out, c)
+	for _, claim := range m.claims {
+		out = append(out, clone(claim))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
 }
-func (m *Memory) ReleaseByPath(owner, path string) error {
-	for _, c := range m.List() {
-		if c.Owner == owner {
-			for _, p := range c.Paths {
-				if p == path {
-					return m.Release(owner, c.ID, false)
-				}
-			}
-		}
-	}
-	return nil
-}
-func (m *Memory) ReleaseByLocalPort(owner string, port int) []Claim {
-	var out []Claim
-	for _, c := range m.List() {
-		if c.Owner == owner && strings.HasSuffix(c.Local, ":"+itoa(port)) {
-			out = append(out, c)
-			_ = m.Release(owner, c.ID, false)
-		}
-	}
-	return out
-}
-func itoa(v int) string {
-	if v == 0 {
-		return "0"
-	}
-	b := make([]byte, 0, 6)
-	for v > 0 {
-		b = append([]byte{byte('0' + v%10)}, b...)
-		v /= 10
-	}
-	return string(b)
-}
-func (m *Memory) Version() uint64 {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.expireLocked()
-	return m.version
+
+func clone(claim Claim) Claim {
+	claim.Paths = append([]string(nil), claim.Paths...)
+	return claim
 }

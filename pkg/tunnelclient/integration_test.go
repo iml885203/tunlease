@@ -2,6 +2,7 @@ package tunnelclient_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -18,80 +19,185 @@ import (
 	"github.com/iml885203/tunlease/pkg/tunnelclient"
 )
 
-func TestAnonymousSessionDataPathAndClose(t *testing.T) {
-	// Local HTTP server the claimed path should reach through the tunnel.
+type testGateway struct {
+	http   *httptest.Server
+	store  *registry.Memory
+	tunnel *gatewayd.Tunnel
+}
+
+func newTestGateway(t *testing.T, allowed []string) *testGateway {
+	t.Helper()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store := registry.NewMemory(64, allowed, logger)
+	tunnel := gatewayd.NewTunnel(store, nil)
+	origin := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "origin: %s", r.URL.Path)
+	})
+	server := httptest.NewServer((&gatewayd.Server{
+		Store: store, Tunnel: tunnel, FailOpen: origin,
+	}).Handler())
+	t.Cleanup(server.Close)
+	return &testGateway{http: server, store: store, tunnel: tunnel}
+}
+
+func TestSessionDataPathFallbackAndClose(t *testing.T) {
 	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "received: %s", r.URL.Path)
+		fmt.Fprintf(w, "local: %s", r.URL.Path)
 	}))
 	defer local.Close()
 	localPort := mustPort(t, local.URL)
+	gateway := newTestGateway(t, []string{"/test/"})
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	store := registry.NewMemory(64, []string{"/test/"}, time.Minute, nil, logger)
-	tunnel, err := gatewayd.NewTunnel(store, nil)
+	client, err := tunnelclient.New(tunnelclient.Config{
+		Gateway: gateway.http.URL, HTTPClient: gateway.http.Client(),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := &gatewayd.Server{
-		Store:             store,
-		Tokens:            nil,
-		TTL:               time.Minute,
-		Heartbeat:         time.Second,
-		Tunnel:            tunnel,
-		TunnelFingerprint: tunnel.Fingerprint(),
-		OnChange:          tunnel.Sync,
-		ControlPrefix:     tunnelclient.DefaultControlPrefix,
-	}
-	httpServer := httptest.NewServer(server.Handler())
-	defer httpServer.Close()
-
-	client, err := tunnelclient.New(tunnelclient.Config{Gateway: httpServer.URL, HTTPClient: httpServer.Client()})
+	session, err := client.Start(context.Background(), []string{"/test/anonymous/*"}, localPort)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	session, err := client.Start(ctx, []string{"/test/anonymous/*"}, localPort)
-	if err != nil {
-		cancel()
-		t.Fatal(err)
+	if session.Claim().Owner != "anonymous" {
+		t.Fatalf("owner = %q", session.Claim().Owner)
 	}
-	if got := session.Claim().Owner; got != "anonymous" {
-		t.Fatalf("owner = %q", got)
-	}
-
-	// Third-party traffic enters as HTTP on the gateway; the claimed path must
-	// reach the local server through the tunnel.
-	body := getThroughTunnel(t, httpServer, "/test/anonymous/hook")
-	if body != "received: /test/anonymous/hook" {
+	if body := get(t, gateway.http, "/test/anonymous/hook"); body != "local: /test/anonymous/hook" {
 		t.Fatalf("tunnelled body = %q", body)
 	}
+	if body := get(t, gateway.http, "/unclaimed"); body != "origin: /unclaimed" {
+		t.Fatalf("origin body = %q", body)
+	}
 
-	cancel()
-	if err := session.Close(); err != nil {
+	if err = session.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if len(store.List()) != 0 {
-		t.Fatalf("claim remains after Close: %#v", store.List())
+	eventually(t, func() bool { return len(gateway.store.List()) == 0 }, "claim release")
+	if body := get(t, gateway.http, "/test/anonymous/hook"); body != "origin: /test/anonymous/hook" {
+		t.Fatalf("post-close body = %q", body)
 	}
 }
 
-func getThroughTunnel(t *testing.T, gateway *httptest.Server, path string) string {
+func TestSessionReconnectReplacesClaim(t *testing.T) {
+	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "local")
+	}))
+	defer local.Close()
+	gateway := newTestGateway(t, []string{"/test/"})
+	client, err := tunnelclient.New(tunnelclient.Config{
+		Gateway: gateway.http.URL, HTTPClient: gateway.http.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.Start(context.Background(), []string{"/test/reconnect"}, mustPort(t, local.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = session.Close() }()
+
+	initial := session.Claim().ID
+	gateway.tunnel.CloseClaim(initial)
+	eventually(t, func() bool { return session.Claim().ID != initial }, "new claim after reconnect")
+	if len(gateway.store.List()) != 1 {
+		t.Fatalf("active claims = %#v", gateway.store.List())
+	}
+	if body := get(t, gateway.http, "/test/reconnect/hook"); body != "local" {
+		t.Fatalf("reconnected body = %q", body)
+	}
+}
+
+func TestExplicitReleaseStopsReconnect(t *testing.T) {
+	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "local")
+	}))
+	defer local.Close()
+	gateway := newTestGateway(t, []string{"/test/"})
+	client, err := tunnelclient.New(tunnelclient.Config{
+		Gateway: gateway.http.URL, HTTPClient: gateway.http.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.Start(context.Background(), []string{"/test/release"}, mustPort(t, local.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err = client.Release(context.Background(), session.Claim().ID); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-session.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("released session did not stop")
+	}
+	var apiErr *tunnelclient.APIError
+	if !errors.As(session.Err(), &apiErr) || apiErr.Code != "claim_released" {
+		t.Fatalf("session error = %v", session.Err())
+	}
+	time.Sleep(1200 * time.Millisecond)
+	if claims := gateway.store.List(); len(claims) != 0 {
+		t.Fatalf("released session reconnected: %#v", claims)
+	}
+	if body := get(t, gateway.http, "/test/release/hook"); body != "origin: /test/release/hook" {
+		t.Fatalf("post-release body = %q", body)
+	}
+}
+
+func TestRepeatedExplicitReleaseRetainsNoGatewayState(t *testing.T) {
+	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "local")
+	}))
+	defer local.Close()
+	gateway := newTestGateway(t, []string{"/test/"})
+	client, err := tunnelclient.New(tunnelclient.Config{
+		Gateway: gateway.http.URL, HTTPClient: gateway.http.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for attempt := 0; attempt < 10; attempt++ {
+		session, startErr := client.Start(context.Background(), []string{fmt.Sprintf("/test/release-%d", attempt)}, mustPort(t, local.URL))
+		if startErr != nil {
+			t.Fatal(startErr)
+		}
+		if releaseErr := client.Release(context.Background(), session.Claim().ID); releaseErr != nil {
+			t.Fatal(releaseErr)
+		}
+		select {
+		case <-session.Done():
+		case <-time.After(5 * time.Second):
+			t.Fatalf("release %d did not stop session", attempt)
+		}
+	}
+	eventually(t, func() bool {
+		return len(gateway.store.List()) == 0 && gateway.tunnel.ActiveSessions() == 0
+	}, "all repeated release state to clear")
+}
+
+func get(t *testing.T, gateway *httptest.Server, path string) string {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		resp, err := gateway.Client().Get(gateway.URL + path)
-		if err == nil && resp.StatusCode == 200 {
-			b, _ := io.ReadAll(resp.Body)
-			_ = resp.Body.Close()
-			return string(b)
-		}
-		if resp != nil {
-			_ = resp.Body.Close()
-		}
+	response, err := gateway.Client().Get(gateway.URL + path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(body)
+}
+
+func eventually(t *testing.T, condition func() bool, description string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !condition() {
 		if time.Now().After(deadline) {
-			t.Fatalf("path %s never reached the tunnel: err=%v", path, err)
+			t.Fatalf("timed out waiting for %s", description)
 		}
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 
@@ -101,56 +207,9 @@ func mustPort(t *testing.T, rawURL string) int {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := strconv.Atoi(port)
+	value, err := strconv.Atoi(port)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return p
-}
-
-func TestSessionReclaimsExpiredLeaseWithoutEventConsumer(t *testing.T) {
-	local, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = local.Close() }()
-
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	store := registry.NewMemory(64, []string{"/test/"}, 100*time.Millisecond, nil, logger)
-	tunnel, err := gatewayd.NewTunnel(store, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	server := &gatewayd.Server{
-		Store:             store,
-		TTL:               100 * time.Millisecond,
-		Heartbeat:         time.Second,
-		Tunnel:            tunnel,
-		TunnelFingerprint: tunnel.Fingerprint(),
-		OnChange:          tunnel.Sync,
-		ControlPrefix:     tunnelclient.DefaultControlPrefix,
-	}
-	httpServer := httptest.NewServer(server.Handler())
-	defer httpServer.Close()
-	client, _ := tunnelclient.New(tunnelclient.Config{Gateway: httpServer.URL, HTTPClient: httpServer.Client()})
-	ctx, cancel := context.WithCancel(context.Background())
-	session, err := client.Start(ctx, []string{"/test/reclaim"}, local.Addr().(*net.TCPAddr).Port)
-	if err != nil {
-		cancel()
-		t.Fatal(err)
-	}
-	initialID := session.Claim().ID
-	deadline := time.Now().Add(4 * time.Second)
-	for session.Claim().ID == initialID && time.Now().Before(deadline) {
-		time.Sleep(20 * time.Millisecond)
-	}
-	if current := session.Claim().ID; current == initialID {
-		cancel()
-		_ = session.Close()
-		t.Fatalf("claim was not renewed: %s", current)
-	}
-	cancel()
-	if err := session.Close(); err != nil {
-		t.Fatal(err)
-	}
+	return value
 }

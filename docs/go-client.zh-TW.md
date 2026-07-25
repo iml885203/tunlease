@@ -1,144 +1,49 @@
-# 嵌入 Tunlease Go client
+# 嵌入 Go client
 
 [English](go-client.md) · [繁體中文](go-client.zh-TW.md)
-
-`tunnelclient` package 讓 Go 應用程式直接管理 Tunlease session。它與獨立 CLI 共用 claim、lease heartbeat、重新連線、TLS pinning WebSocket 與反向 tunnel engine。最後仍是一個 application binary，使用者不需要另外安裝 `tunle` CLI。
-
-## 加入 dependency
-
-用 `go get` 加入 package：
 
 ```bash
 go get github.com/iml885203/tunlease/pkg/tunnelclient@latest
 ```
 
-如果 repository 是 private，請先確認本機 Git credentials 有讀取權限，並讓 Go 直接取得 module（而非透過 public proxy）：
-
-```bash
-go env -w GOPRIVATE=github.com/iml885203/tunlease
-```
-
-把 `go.mod` 與 `go.sum` 的異動一起 commit。為了讓 build 可以重現，請保留 `go get` 選定的版本，不要依賴本機 `replace` directive。
-
-## 啟動並管理 session
-
 ```go
-package callbacks
-
-import (
-    "context"
-    "errors"
-    "fmt"
-
-    "github.com/iml885203/tunlease/pkg/tunnelclient"
-)
-
-func ServeTunnel(ctx context.Context, gateway string, token string, localPort int) error {
-    client, err := tunnelclient.New(tunnelclient.Config{
-        Gateway: gateway,
-        Token:   token,
-    })
-    if err != nil {
-        return fmt.Errorf("configure Tunlease: %w", err)
-    }
-
-    session, err := client.Start(ctx, []string{
-        "/webhooks/provider/callback/*",
-    }, localPort)
-    if err != nil {
-        return fmt.Errorf("start Tunlease tunnel: %w", err)
-    }
-    defer func() { _ = session.Close() }()
-
-    for {
-        select {
-        case <-ctx.Done():
-            return session.Close()
-        case <-session.Done():
-            return session.Err()
-        case event, ok := <-session.Events():
-            if !ok {
-                return session.Err()
-            }
-            switch event.Type {
-            case tunnelclient.EventHeartbeatWarning:
-                // Session 仍可使用，並會自動重試。
-            case tunnelclient.EventLeaseReclaimed:
-                // Claim ID 已改變；用 session.Claim() 讀取最新狀態。
-            case tunnelclient.EventTunnelReconnected:
-                // Gateway tunnel identity 改變，且已完成重新連線。
-            }
-        }
-    }
-}
-
-func IsConflict(err error) bool {
-    var apiErr *tunnelclient.APIError
-    return errors.As(err, &apiErr) && apiErr.Code == "path_claimed"
-}
-```
-
-`Start` 會正規化 path，並只在 gateway 接受 claim 且初始反向 tunnel 已連線後回傳。設定失敗時只回傳 error，不會留下 session。啟動後，session 會自行維持 heartbeat，並處理暫時性的 tunnel 斷線。
-
-Caller 負責 context 與 session lifecycle：
-
-- Host application 關閉時取消 context。
-- 呼叫 `Close`，等待 tunnel 關閉並盡力釋放 claim。
-- 監看 `Done`，結束後用 `Err` 取得 terminal failure。
-- 需要目前 claim ID、path、owner、port 或 expiry 時呼叫 `Claim`。
-- `Events` 提供 non-terminal lifecycle notification；application correctness 應以 `Claim`、`Done` 與 `Err` 為準。
-
-## Credentials 與設定
-
-Package 不會讀取 `~/.tunlease.yaml`、environment variables 或 CLI state。嵌入它的應用程式必須把 gateway URL 傳給 `tunnelclient.New`。Gateway 未設定 client token 時，`Token` 可以留空。
-
-若 gateway 啟用認證，應用程式必須從自己的安全設定來源取得個人 token。不要把 token 寫進 log，也不要透過 local status API 暴露。
-
-`tunnelclient.Config` 欄位：
-
-| 欄位 | 意義 |
-|---|---|
-| `Gateway` | Gateway host 或 URL。scheme 可省略（見 `DefaultScheme`）；若沒有 path，會自動補上控制面前綴 `/_tunlease`。 |
-| `Token` | Bearer token；gateway 未設 token 時留空。 |
-| `Insecure` | 跳過 outer TLS server authentication。Inner TLS 仍 pin fingerprint，但 fingerprint 經由 outer connection 取得，無法抵擋完整 MITM。只在可信網路使用；設定 `HTTPClient` 時忽略。 |
-| `DefaultScheme` | `Gateway` 沒帶 scheme 時的預設。預設 `https`；沒有 TLS 的 gateway 設 `http`。 |
-| `HTTPClient` | 自訂 HTTP transport。設了之後 `Insecure` 會被忽略——TLS 請自行在 client 上設定。 |
-
-應優先提供信任 internal CA 的自訂 `HTTPClient`，不要使用 `Insecure`。
-
-## 列出與釋放 claim
-
-```go
-claims, err := client.List(ctx)
+client, err := tunnelclient.New(tunnelclient.Config{
+    Gateway: "callbacks.staging.example.com",
+    Token: token,
+})
 if err != nil {
     return err
 }
 
-if err := client.Release(ctx, claims[0].ID); err != nil {
+session, err := client.Start(ctx, []string{
+    "/webhooks/provider/callback/*",
+}, 8080)
+if err != nil {
     return err
 }
+defer session.Close()
+
+for event := range session.Events() {
+    if event.Type == tunnelclient.EventTunnelReconnected {
+        log.Printf("reconnected as %s", event.Claim.ID)
+    }
+}
+return session.Err()
 ```
 
-目前 process 擁有的 session 應優先使用 `Session.Close`；只有 administrative flow 手上僅有 claim ID 時才直接呼叫 `Release`。
+`Start` 只在 gateway 已擁有 paths 且 reverse tunnel 可路由後返回；可傳 1–8
+條 path，每條最多 512 bytes。Session 持有兩者，直到 `Close` 或 context
+cancellation。重連會取得新 claim ID，
+可由 `session.Claim()` 讀取。
 
-## 升級
+`Config` 支援 `Gateway`、`Token`、`DefaultScheme`、`Insecure` 與 custom
+`HTTPClient`。Gateway 必須是無 path 的 host 或 URL；package 會加入固定
+`/_tunlease`。`Insecure` 停用外層 TLS verification；設定 custom client 時忽略。
 
-```bash
-go get github.com/iml885203/tunlease/pkg/tunnelclient@latest
-go mod tidy
-go test ./...
-```
+使用 `List` 查看 active session，`Release` 依 ID 終止。Current process
+擁有的 session 應優先呼叫 `Session.Close`。Gateway error 可轉成
+`*tunnelclient.APIError`，例如 `path_claimed`、`path_not_allowed` 與
+`claim_limit_reached`。
 
-跨 major version 升級前先閱讀 release notes。開始發布 versioned module 後，public Go API 會遵守 semantic versioning。
-
-## Integration test
-
-有效的 integration test 應驗證真實 data path，而不只呼叫 claim API：
-
-1. 在可用的 localhost port 啟動 HTTP server。
-2. 啟動 session，把專用測試 path claim 到該 port。
-3. 使用該 path 呼叫固定 public endpoint。
-4. 確認本機 server 收到 request，且 response 成功回到 caller。
-5. 關閉 session，再確認相同 public request 會 fallback 到原始 application。
-
-請使用 automation 專用 path，避免測試攔截其他開發者的 callback。
+Integration test 應啟動 local HTTP server、建立 session、呼叫固定 public URL、
+驗證 local response、關閉 session，再驗證同一 request 回到 origin。

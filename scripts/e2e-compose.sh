@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # End-to-end test over docker compose, all-HTTP topology (mirrors e2e-local.sh):
-#   compose brings up redis + gateway (:18300) + app (testapp on :8081).
+#   compose brings up gateway (:18300) + app (testapp on :8081).
 # The gateway serves its control plane under /_tunlease and demuxes every other
 # path itself: a claimed path is tunnelled to the developer, anything else falls
 # open to fail_open_url (http://app:8081).
@@ -8,7 +8,7 @@
 # Scenarios:
 #   1. before any claim, a third-party path falls open to the app
 #   2. after `tunle claim`, that path reaches the developer's local server
-#   3. after the claim dies and the TTL expires, the path falls open again
+#   3. after the tunnel dies, its paths are released and fall open again
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -63,13 +63,13 @@ for _ in $(seq 1 30); do
 done
 expect "local:/test/callback" "$got" "claimed path crosses reverse tunnel to localhost"
 
-# 3. Kill the claim; after the TTL expires the path falls open to the app again.
+# 3. Kill the tunnel; connection closure releases the path.
 kill -9 "$CLAIM_PID" 2>/dev/null || true; wait "$CLAIM_PID" 2>/dev/null || true; CLAIM_PID=""
 for _ in $(seq 1 15); do
   got=$(curl -fsS "$GATEWAY/test/callback" 2>/dev/null || true)
   [ "$got" = "app:/test/callback" ] && break
   sleep 1
 done
-expect "app:/test/callback" "$got" "TTL expiry falls open to app again"
+expect "app:/test/callback" "$got" "closed tunnel falls open to app again"
 
 echo "ALL COMPOSE E2E CHECKS PASSED"

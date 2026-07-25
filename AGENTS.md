@@ -4,8 +4,6 @@ This file is the repository entry point for coding agents and contributors.
 
 ## Authoritative documents
 
-- `docs/concepts.md` — canonical topology, terminology, URL/path model, failure
-  contract, trust boundaries, and current deployment limits.
 - `docs/developer-guide.md` — CLI workflow and automation.
 - `docs/platform-deployment.md` — operator deployment and runbook.
 - `docs/architecture.md` — implementation architecture and lifecycle.
@@ -23,12 +21,11 @@ names, configuration keys, paths, or code.
   its control plane; all other paths are data-plane traffic.
 - `fail_open_url` must identify the original app without routing back through
   the gateway.
-- Claims use the narrowest allowed path and are exclusive temporary leases.
+- A live WebSocket session owns the narrowest allowed paths; disconnect releases them.
 - Fail-open covers no usable tunnel before dispatch while the gateway is
   reachable. It does not cover gateway/Ingress/origin outage or promise replay
   after dispatch.
-- The current data plane uses one gateway replica. Redis preserves leases, not
-  process-local WebSocket sessions.
+- The current data plane uses one gateway replica with process-local state.
 - Real staging data reaches developer machines.
 
 ## Configuration names
@@ -36,9 +33,8 @@ names, configuration keys, paths, or code.
 | Concept | Gateway YAML | Helm value | Client YAML |
 |---|---|---|---|
 | Public gateway | — | `ingress.host` | `gateway` |
-| Control namespace | `control_prefix` | `config.controlPrefix` | appended automatically |
+| Control namespace | fixed `/_tunlease` | fixed `/_tunlease` | appended automatically |
 | Original app | `fail_open_url` | `config.failOpenURL` | — |
-| Registry URL | `redis_url` | `config.redisURL` | — |
 | TLS verification bypass | — | — | `insecure` |
 
 ## Verification

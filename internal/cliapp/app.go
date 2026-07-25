@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/iml885203/tunlease/pkg/tunnelclient"
 	"github.com/spf13/cobra"
@@ -36,8 +35,7 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 	var insecure bool
 	root := &cobra.Command{Use: "tunle", Short: "Claim a 3rd-party callback path and tunnel it to your machine", SilenceUsage: true, Version: fmt.Sprintf("%s (%s)", version, buildTime)}
 	// Client flags live on the client subcommands (claim/list/release), not on
-	// root, so the gateway and serve subcommands don't inherit an irrelevant
-	// --gateway/--token.
+	// root, so the gateway subcommand doesn't inherit irrelevant client flags.
 	addClientFlags := func(c *cobra.Command) {
 		c.Flags().StringVar(&gateway, "gateway", "", "gateway base URL (env TUNLEASE_GATEWAY)")
 		c.Flags().StringVar(&token, "token", "", "API token (env TUNLEASE_TOKEN)")
@@ -70,7 +68,7 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 	var detach, daemon bool
 	claimCmd := &cobra.Command{
 		Use:   "claim PATH [PATH...] --to PORT",
-		Short: "Claim path(s), open the tunnel, and keep the lease alive (Ctrl+C releases)",
+		Short: "Open a tunnel that exclusively owns path(s) until it closes",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			paths := make([]string, 0, len(args))
@@ -98,7 +96,7 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 		},
 	}
 	claimCmd.Flags().IntVar(&to, "to", 0, "local port to receive the traffic")
-	claimCmd.Flags().BoolVar(&detach, "detach", false, "run in the background and return immediately (release with `tunle release`)")
+	claimCmd.Flags().BoolVar(&detach, "detach", false, "run in the background and return immediately (stop with tunle release)")
 	claimCmd.Flags().BoolVar(&daemon, "_daemon", false, "")
 	_ = claimCmd.Flags().MarkHidden("_daemon")
 	_ = claimCmd.MarkFlagRequired("to")
@@ -146,7 +144,6 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 	root.AddCommand(releaseCmd)
 	root.AddCommand(newUpdateCommand(version))
 	root.AddCommand(newGatewayCommand())
-	root.AddCommand(newServeCommand())
 	return root
 }
 
@@ -171,23 +168,12 @@ func runClaim(c *tunnelclient.Client, paths []string, to int, daemon bool) error
 	fmt.Printf("claimed %s (claim %s)\n", strings.Join(cl.Paths, " "), shortID(cl.ID))
 	fmt.Printf("WARNING: real 3rd-party traffic for these paths now flows to localhost:%d\n", to)
 	fmt.Println("tunnel connected  (Ctrl+C to release)")
-	syncTicker := time.NewTicker(time.Second)
-	defer syncTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			_ = session.Close()
 			fmt.Println("\nreleased, tunnel closed")
 			return nil
-		case <-syncTicker.C:
-			current := session.Claim()
-			if current.ID != cl.ID {
-				st := loadState()
-				st.removeSession(c.Gateway(), to, cl.Paths)
-				st.add(stateClaim{ClaimID: current.ID, Gateway: c.Gateway(), Paths: current.Paths, To: to, PID: pid})
-				saveState(st)
-				cl = current
-			}
 		case event, ok := <-session.Events():
 			if !ok {
 				if err := session.Err(); err != nil {
@@ -195,19 +181,15 @@ func runClaim(c *tunnelclient.Client, paths []string, to int, daemon bool) error
 				}
 				return nil
 			}
-			switch event.Type {
-			case tunnelclient.EventLeaseReclaimed:
-				fmt.Println("lease expired on gateway — re-claiming and rebuilding tunnel")
+			if event.Type == tunnelclient.EventTunnelReconnected {
+				fmt.Println("tunnel reconnected")
+				previous := cl
 				cl = event.Claim
 				st := loadState()
-				st.removeSession(c.Gateway(), to, cl.Paths)
+				st.removeSession(c.Gateway(), to, previous.Paths)
 				st.add(stateClaim{ClaimID: cl.ID, Gateway: c.Gateway(), Paths: cl.Paths, To: to, PID: pid})
 				saveState(st)
-				fmt.Printf("re-claimed %s (claim %s)\n", strings.Join(cl.Paths, " "), shortID(cl.ID))
-			case tunnelclient.EventHeartbeatWarning:
-				fmt.Printf("heartbeat failed (will retry): %v\n", event.Err)
-			case tunnelclient.EventTunnelReconnected:
-				fmt.Println("gateway tunnel identity changed — reconnecting")
+				fmt.Printf("paths remain claimed as %s\n", shortID(cl.ID))
 			}
 		}
 	}
@@ -241,7 +223,7 @@ func runList(ctx context.Context, c *tunnelclient.Client, all bool) error {
 			target = fmt.Sprintf("→ localhost:%d", s.To)
 			suffix = "  (you)"
 		}
-		fmt.Printf("%-40s %-24s expires %s%s\n", strings.Join(x.Paths, ","), target, x.ExpiresAt.Local().Format("15:04:05"), suffix)
+		fmt.Printf("%-40s %-24s connected %s%s\n", strings.Join(x.Paths, ","), target, x.StartedAt.Local().Format("15:04:05"), suffix)
 		shown++
 	}
 	if shown == 0 {

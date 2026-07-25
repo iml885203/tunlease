@@ -1,13 +1,6 @@
 listen: ":8300"
-advertise_host: "gateway"
-registry: redis
-redis_url: "redis://redis:6379/0"
-redis_prefix: "tunlease-e2e"
-control_prefix: "/_tunlease"
 fail_open_url: "http://app:8081"
 max_claims: 64
-ttl_seconds: 8
-heartbeat_seconds: 2
 whitelist:
   - /test/
 tokens:

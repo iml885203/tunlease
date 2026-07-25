@@ -2,136 +2,74 @@
 
 [English](architecture.md) · [繁體中文](architecture.zh-TW.md)
 
-For the user-facing topology, vocabulary, and complete failure matrix, start
-with [Tunlease concepts](concepts.md). This page describes implementation.
+Tunlease has four concepts:
 
-## System overview
+- **Gateway** — a whole-host proxy in front of one application.
+- **Origin** — that original application, configured by `fail_open_url`.
+- **Tunnel session** — one live WSS connection from a developer.
+- **Claimed paths** — prefixes exclusively owned by that connection.
+
+There is no independent lease. The WebSocket is the claim: a successful
+handshake owns the paths and closing the connection releases them.
+
+## Topology and URL map
+
+The existing callback host routes `/` to the gateway. `/_tunlease` is reserved
+for health, list/release, and the tunnel WebSocket. Every other path is data
+traffic. The origin must use a separate internal URL that cannot loop through
+the public gateway.
 
 ```mermaid
 flowchart LR
-    ThirdParty[Third-party system]
-
-    subgraph Cluster[Shared environment]
-        Ingress[Existing Ingress<br/>fixed public endpoint]
-
-        subgraph GatewayPod[tunlease-gateway Pod]
-            Router[HTTP path demux<br/>control_prefix + fail_open_url]
-            API[Claim API]
-            Registry[Lease registry<br/>memory in staging]
-            TunnelServer[Purpose-built tunnel server]
-        end
-
-        App[Original application<br/>fixed-endpoint workload]
+    ThirdParty["Third party"] --> Gateway["Gateway"]
+    subgraph Shared["Shared environment"]
+      Gateway --> Origin["Original app"]
     end
-
-    subgraph Developer[Developer machine]
-        CLI[tunle CLI]
-        LocalApp[Local service]
+    subgraph Developer["Developer machine"]
+      CLI["tunle CLI"] --> Local["Local service"]
     end
-
-    ThirdParty -->|fixed URL| Ingress
-    Ingress --> Router
-    Router -->|unclaimed path or failure| App
-    Router -->|claimed path| TunnelServer
-    Router -->|control_prefix path| API
-    CLI -->|claim and heartbeat| API
-    API <--> Registry
-    CLI ==>|reverse WebSocket tunnel| TunnelServer
-    TunnelServer -->|forward request| LocalApp
-
-    classDef tunlease fill:#dbeafe,stroke:#2563eb,color:#1e3a8a,stroke-width:2px;
-    class CLI,Router,API,Registry,TunnelServer tunlease;
+    Gateway --> CLI
 ```
 
-Blue nodes are owned and shipped by tunlease; neutral nodes are third-party
-systems or existing infrastructure and applications. The gateway sits in front
-of the app and demuxes traffic by path itself: requests under `control_prefix`
-(default `/_tunlease`) hit the claim API; every other path is third-party
-traffic. The control plane consists of claims, heartbeats, and leases. The data
-plane selects the reverse tunnel or, when no usable tunnel exists before
-dispatch, the original app (`fail_open_url`). The gateway never depends on
-Kubernetes APIs.
+## Session lifecycle
 
-## Request routing
+`GET /_tunlease/tunnel` upgrades to WebSocket. Authentication, path validation,
+exclusive ownership, tunnel creation, and readiness happen in that handshake.
+The gateway and client exchange a bounded ready/ack handshake; incomplete
+connections time out and release their paths. `Start` returns only after the
+data channel is routable.
 
-```mermaid
-flowchart TD
-    Request[Request reaches the gateway]
-    Control{Path under<br/>control_prefix?}
-    API[Handle on the claim API]
-    Match{Active claim matches<br/>the request path?}
-    Tunnel{Connected tunnel<br/>available before dispatch?}
-    Local[Forward to local service]
-    App[Forward to original app<br/>fail_open_url]
+Network loss releases the server record. The client retries and sends its old
+claim ID as replacement context; a successful reconnect receives a new ID.
+Traffic goes to the origin during the gap. An explicit release is terminal and
+must not reconnect: the gateway sends a release control frame and returns
+success only after the client acknowledges it.
 
-    Request --> Control
-    Control -->|Yes| API
-    Control -->|No| Match
-    Match -->|No| App
-    Match -->|Yes| Tunnel
-    Tunnel -->|Yes; later failure may return an error| Local
-    Tunnel -->|No: fail open| App
+The remaining HTTP API is:
 
-    classDef tunlease fill:#dbeafe,stroke:#2563eb,color:#1e3a8a,stroke-width:2px;
-    class Request,Control,Match,Tunnel tunlease;
-```
+- `GET /_tunlease/api/v1/claims`
+- `DELETE /_tunlease/api/v1/claims/{id}`
+- `GET /_tunlease/healthz`
 
-The gateway uses longest-prefix matching against active claims. A path with no
-matching claim, or a matching lease without a connected tunnel before dispatch,
-takes the original-app path (`fail_open_url`); if `fail_open_url` is unset, it
-returns 404. A failure after dispatch begins can return an error rather than
-replaying the request to the origin.
+## Routing and failure contract
 
-## Claim lifecycle
+| State | Result |
+|---|---|
+| Path matches a connected session | Send through yamux to localhost |
+| No matching connected session | Proxy to the origin |
+| Tunnel/local failure after dispatch starts | Return an error; never replay |
+| Gateway or origin unavailable | Platform outage |
 
-```mermaid
-sequenceDiagram
-    participant Dev as Developer
-    participant CLI as tunle CLI
-    participant GW as tunlease-gateway
-    participant Local as Local service
-
-    Dev->>CLI: tunle claim --to 8080 /path/*
-    CLI->>GW: POST /_tunlease/api/v1/claims
-    GW-->>CLI: claim ID, TTL, heartbeat, fingerprint
-    CLI->>GW: Open reverse tunnel
-    loop While the claim is active
-        CLI->>GW: Heartbeat
-    end
-    GW->>Local: Forward matching callback through tunnel
-    Dev->>CLI: Ctrl+C
-    CLI->>GW: DELETE claim
-```
-
-## Gateway Pod replacement
-
-With the in-memory registry, replacing the gateway Pod removes all leases and tunnels. This is intentional for the current single-replica deployment:
-
-1. Once the replacement gateway is reachable, it no longer has the old claim
-   and proxies unmatched traffic to the original app.
-2. The CLI reconnects, discovers that its lease no longer exists, and creates a new claim.
-3. The CLI builds a new tunnel and the gateway registers the new claim.
-4. Matching callbacks resume forwarding to the local service.
-
-Recovery time depends on heartbeat interval, reconnect backoff, gateway startup,
-DNS/load-balancer behavior, and provider timing; it is not an SLA. Before the
-replacement gateway is reachable, requests can fail at the network edge. Once
-it is healthy, unmatched traffic can proxy to the origin while the CLI rebuilds
-its lease and tunnel.
+Paths must start with `/`, end in `/*`, and not otherwise contain `*`.
+Each path is at most 512 bytes and one session may own at most 8 paths.
+Overlapping prefixes are exclusive. The gateway forwards HTTP method,
+path/query, headers, body, and response; applications must still handle
+provider retries and duplicate delivery.
 
 ## Deployment boundary
 
-The core protocol does not require Kubernetes. Kubernetes provides the current packaging and lifecycle model:
-
-- Helm deploys the gateway, Service, Ingress, and configuration Secret.
-- The gateway is deployed in front of the app: Ingress routes the fixed endpoint to the gateway, and the gateway's `fail_open_url` points at the app's Service.
-- Public hosts, paths, and third-party configuration remain unchanged.
-
-The current data plane requires one gateway replica. A Redis registry can
-preserve lease records across restart, but live WebSocket sessions and tunnel
-selection remain process-local. Generic load balancing across replicas is
-therefore unsafe without claim-aware routing or a shared tunnel transport.
-
-Fail-open is process-local routing performed by a reachable gateway. It does
-not cover gateway, Service, Ingress, load-balancer, DNS, or origin outage. See
-the [routing and failure contract](concepts.md#routing-and-failure-contract).
+The supported v1 data plane is one gateway process with in-memory state.
+Multiple replicas are unsafe because WebSocket sessions are process-local.
+Gateway restart creates a reconnect gap; it does not preserve active claims.
+Outer HTTPS/WSS provides transport security. There is no second TLS layer
+inside the tunnel.

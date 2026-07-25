@@ -34,7 +34,7 @@ and `golangci-lint`. Individual targets are also available — see the
 [`Makefile`](Makefile) (`make test`, `make test-race`, `make vet`, `make lint`,
 `make fmt`).
 
-The end-to-end suite spins up Redis, the gateway, and a sample app in containers
+The end-to-end suite spins up the gateway, origin app, and a sample local app in containers
 and drives the real CLI:
 
 ```bash

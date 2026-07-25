@@ -1,5 +1,3 @@
-replicaCount: 1
-
 image:
   repository: your-registry.example.com/tunlease-gateway
   tag: latest
@@ -21,18 +19,10 @@ ingress:
 
 config:
   listen: ":8300"
-  registry: memory
-  redisURL: ""
-  redisPrefix: tunlease
-  # Same-domain deployment: the control plane is served under controlPrefix and
-  # every other path is third-party traffic — tunnelled if a claim matches, else
-  # proxied to failOpenURL (the original app), else 404. Set failOpenURL to your
-  # app's Service, e.g. http://myapp.default.svc.cluster.local.
-  controlPrefix: /_tunlease
-  failOpenURL: ""
+  # Required origin for every request without a connected matching tunnel.
+  # Replace this example with the original app's cluster-internal URL.
+  failOpenURL: http://callback-app.default.svc
   maxClaims: 64
-  ttlSeconds: 300
-  heartbeatSeconds: 30
   # Path allowlist (opt-in): an empty list allows any path. The prefixes below
   # are an example — set the ones that cover your callbacks, or clear the list
   # on a trusted network. Restricting it stops anyone claiming paths like /admin.

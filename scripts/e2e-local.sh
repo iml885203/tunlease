@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# 本機 e2e（spec §04 Phase 1 驗收）：
+# 本機端到端驗收：
 #   1. gateway 起來，CLI claim 後 curl gateway（以 path demux）→ 到達本機 server
 #   2. 白名單外 403、同 path 衝突 409
-#   3. kill -9 CLI → TTL 過期 → 租約消失
+#   3. kill -9 CLI → WebSocket 關閉 → claim 立即消失
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 PORT_API=18300
 PORT_LOCAL=18500
+PORT_ORIGIN=18501
 TOKEN=e2e-secret
 TMP=$(mktemp -d)
 PIDS=()
@@ -20,16 +21,25 @@ make build >/dev/null
 
 cat > "$TMP/config.yaml" <<EOF
 listen: ":$PORT_API"
-advertise_host: "127.0.0.1"
+fail_open_url: "http://127.0.0.1:$PORT_ORIGIN"
 max_claims: 64
-ttl_seconds: 6
-heartbeat_seconds: 2
 whitelist: ["/test/"]
 tokens:
   - {owner: e2e, token: "$TOKEN"}
 EOF
 
 ./bin/tunle gateway --config "$TMP/config.yaml" > "$TMP/gateway.log" 2>&1 &
+PIDS+=($!)
+
+# Origin server：未 claim 的 path 會送到這裡。
+python3 -c "
+from http.server import BaseHTTPRequestHandler, HTTPServer
+class H(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200); self.end_headers(); self.wfile.write(b'hello-from-origin')
+    def log_message(self, *a): pass
+HTTPServer(('127.0.0.1', $PORT_ORIGIN), H).serve_forever()
+" &
 PIDS+=($!)
 
 # 本機目標 server：回固定字串
@@ -49,9 +59,8 @@ for i in $(seq 1 20); do
   sleep 0.3
 done
 
-# Control plane lives under /_tunlease (same-domain default); the CLI's gateway
-# base URL includes it. Third-party paths (e.g. /test/cb) stay at the root.
-export TUNLEASE_GATEWAY="http://127.0.0.1:$PORT_API/_tunlease" TUNLEASE_TOKEN="$TOKEN"
+# The CLI receives only the whole-host gateway URL and appends /_tunlease.
+export TUNLEASE_GATEWAY="http://127.0.0.1:$PORT_API" TUNLEASE_TOKEN="$TOKEN"
 
 # --- 白名單外 → 403 ---
 if ./bin/tunle claim --to $PORT_LOCAL /outside/cb 2> "$TMP/deny.log"; then
@@ -84,12 +93,15 @@ echo "OK: overlap 409 with claimed_by"
 ./bin/tunle list | grep -q "(you)" || fail "list missing (you) marker"
 echo "OK: list shows own claim"
 
-# --- kill -9 → TTL 過期 → 租約消失、claim 名額釋回 ---
+# --- kill -9 → connection close → claim 消失 ---
 kill -9 "$CLAIM_PID"
-sleep 9
-CLAIMS=$(curl -sf -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$PORT_API/_tunlease/api/v1/claims")
-echo "$CLAIMS" | grep -q '"claims":\[\]' || fail "lease survived TTL after kill -9: $CLAIMS"
-echo "OK: kill -9 → TTL expiry → lease gone"
+for _ in $(seq 1 20); do
+  CLAIMS=$(curl -sf -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$PORT_API/_tunlease/api/v1/claims")
+  echo "$CLAIMS" | grep -q '"claims":\[\]' && break
+  sleep 0.25
+done
+echo "$CLAIMS" | grep -q '"claims":\[\]' || fail "claim survived closed tunnel: $CLAIMS"
+echo "OK: kill -9 → connection close → claim gone"
 
 # --- release 後 state 清乾淨（release 殘留 state 條目）---
 ./bin/tunle release /test/cb > /dev/null 2>&1 || true

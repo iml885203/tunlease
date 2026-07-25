@@ -22,13 +22,13 @@ will be published.
 
 ## Scope
 
-Tunlease routes a single claimed path on a fixed endpoint to a developer's
+Tunlease routes one or more claimed paths on a fixed endpoint to a developer's
 machine and **fails open** to the original application for everything else.
 Security-relevant areas include:
 
-- the exclusive-lease and path-allowlist enforcement in the gateway,
-- authentication on the tunnel WebSocket upgrade and the claim API,
-- the TLS-pinned tunnel between client and gateway, and
+- exclusive active-session ownership and path-allowlist enforcement,
+- authentication on the tunnel WebSocket upgrade and list/release API,
+- HTTPS/WSS transport security, and
 - the fail-open behaviour that must never expose unclaimed paths to a client.
 
 ## Authentication and ownership
@@ -43,8 +43,8 @@ governs who may **release** a claim.
   gateway config. A client sends `Authorization: Bearer <token>`; the gateway
   looks it up server-side (a client can't assert an owner it has no token for),
   and a claim is then owned by that token's owner and only that owner can
-  heartbeat or release it. Any authenticated owner can list all claims and see
-  their owner, paths, and expiry.
+  release it. Any authenticated owner can list all claims and see their owner,
+  paths, and connection start time.
 
 Configure per-developer tokens for any gateway reachable outside a trusted
 network. See the [platform deployment guide](docs/platform-deployment.md) for
@@ -60,10 +60,10 @@ Authentication is not denial-of-service protection. An Internet-reachable
 deployment also needs edge rate limits, request/header/body limits, connection
 quotas, trusted TLS, and ordinary gateway/Ingress availability controls.
 
-`--insecure` disables outer TLS server authentication. The inner tunnel
-fingerprint is delivered through that outer connection, so pinning does not
-protect against a full man-in-the-middle in this mode. Prefer a trusted
-internal CA and use `--insecure` only on a trusted network.
+`--insecure` disables WSS server authentication. There is no inner encryption
+layer. Prefer a trusted internal CA and use `--insecure` only on a trusted
+network. If TLS terminates before the Pod, protect an untrusted cluster hop
+with re-encryption or mTLS.
 
 Real staging callback bodies and credentials are delivered to developer
 machines. Operators must apply data-classification, authorization, local
@@ -73,4 +73,4 @@ Fail-open is performed only by a reachable gateway when no usable tunnel exists
 before dispatch. It is not protection from gateway, Ingress, DNS,
 load-balancer, or origin outage, and Tunlease does not promise to replay a
 request after tunnel dispatch has begun. See the
-[failure contract](docs/concepts.md#routing-and-failure-contract).
+[failure contract](docs/architecture.md#routing-and-failure-contract).
