@@ -2,6 +2,24 @@
 
 [English](developer-guide.md) · [繁體中文](developer-guide.zh-TW.md)
 
+## 安裝
+
+```bash
+# 使用 Homebrew 的 macOS 或 Linux
+brew install iml885203/tap/tunlease
+```
+
+```powershell
+# 使用 Scoop 的 Windows
+scoop bucket add tunlease https://github.com/iml885203/scoop-bucket
+scoop install tunlease
+```
+
+Homebrew 會安裝 bash、zsh 與 fish shell completions。CLI 也可透過
+`tunle completion SHELL` 直接輸出 completion script。
+
+## 連線
+
 向平台團隊取得 callback host、允許的 path，以及可選的個人 token。先啟動本機
 service，再執行：
 
@@ -13,6 +31,16 @@ tunle claim /webhooks/provider/callback/* --to 8080
 
 Gateway URL 只填 host；client 會加入固定的 `/_tunlease`。預設使用 HTTPS，
 只有本機開發才明確填 `http://`。
+
+Claim 前可診斷 local port、gateway、authentication 與 path：
+
+```bash
+tunle doctor /webhooks/provider/callback/* --to 8080
+```
+
+`doctor` 不會保留 path；`claim` 連線時 gateway 會再次檢查 allowlist。
+Stripe、GitHub、Slack 與 OAuth 範例請見
+[provider recipes](webhook-recipes.zh-TW.md)。
 
 也可在 `~/.tunlease.yaml` 設定 `gateway`、`token`、`insecure` 與
 `default_scheme`。應優先安裝正確 CA；`--insecure` 會停用 WSS server

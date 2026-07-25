@@ -32,7 +32,11 @@ instead.
 
 ## Update the Homebrew tap
 
-After the GitHub Release succeeds:
+The tap checks the latest GitHub Release every six hours and opens a formula
+update pull request. Review its macOS and Linux test run, then merge it.
+
+If automation is unavailable, update it manually after the GitHub Release
+succeeds:
 
 1. Open the tap checkout managed by Homebrew:
 
@@ -67,6 +71,16 @@ After the GitHub Release succeeds:
 
 The tap builds from source. It does not depend on the prebuilt release
 binaries.
+
+## Update the Scoop bucket
+
+The `iml885203/scoop-bucket` repository checks the latest release every six
+hours and opens a manifest update pull request. Its Windows workflow installs
+the manifest with Scoop and runs the CLI. Review that run before merging.
+
+The manifest uses the Windows binary and SHA-256 file published by the release
+workflow. If automation is unavailable, update its `version`, download URL, and
+hash together.
 
 ## Homebrew Core readiness
 

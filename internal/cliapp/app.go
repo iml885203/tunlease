@@ -142,6 +142,32 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 	releaseCmd.Flags().IntVar(&relTo, "to", 0, "release all claims tunnelled to this local port")
 	addClientFlags(releaseCmd)
 	root.AddCommand(releaseCmd)
+
+	var doctorTo int
+	doctorCmd := &cobra.Command{
+		Use:   "doctor [PATH]",
+		Short: "Check local service, gateway, authentication, and optional path",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var path string
+			if len(args) == 1 {
+				var e error
+				path, e = NormalizePath(args[0])
+				if e != nil {
+					return fmt.Errorf("%q: %w", args[0], e)
+				}
+			}
+			c, e := get()
+			if e != nil {
+				return e
+			}
+			return runDoctor(cmd.Context(), c, path, doctorTo)
+		},
+	}
+	doctorCmd.Flags().IntVar(&doctorTo, "to", 0, "local port to check (optional)")
+	addClientFlags(doctorCmd)
+	root.AddCommand(doctorCmd)
+
 	root.AddCommand(newGatewayCommand())
 	return root
 }

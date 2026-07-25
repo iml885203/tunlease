@@ -2,6 +2,24 @@
 
 [English](developer-guide.md) · [繁體中文](developer-guide.zh-TW.md)
 
+## Install
+
+```bash
+# macOS or Linux with Homebrew
+brew install iml885203/tap/tunlease
+```
+
+```powershell
+# Windows with Scoop
+scoop bucket add tunlease https://github.com/iml885203/scoop-bucket
+scoop install tunlease
+```
+
+Homebrew installs shell completions for bash, zsh, and fish. The CLI can also
+print a completion script directly with `tunle completion SHELL`.
+
+## Connect
+
 Ask the platform team for the callback host, an allowed path, and optionally a
 personal token. Start the local service, then:
 
@@ -13,6 +31,16 @@ tunle claim /webhooks/provider/callback/* --to 8080
 
 The gateway URL is the bare host; the client adds fixed `/_tunlease`. HTTPS is
 the default. Use an explicit `http://` only for local development.
+
+Before claiming, diagnose the local port, gateway, authentication, and path:
+
+```bash
+tunle doctor /webhooks/provider/callback/* --to 8080
+```
+
+`doctor` does not reserve the path. The gateway checks its allowlist again when
+`claim` connects. See the [provider recipes](webhook-recipes.md) for Stripe,
+GitHub, Slack, and OAuth examples.
 
 You may put `gateway`, `token`, `insecure`, and `default_scheme` in
 `~/.tunlease.yaml`. Prefer installing the correct CA; `--insecure` disables WSS
