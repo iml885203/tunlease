@@ -12,118 +12,67 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header class="nav shell">
-    <a class="brand" href="#top" aria-label="Tunlease home">
+  <header class="shell">
+    <a class="brand" href="/" aria-label="Tunlease home">
       <img src="icon.svg" width="34" height="34" alt="">
       <span>Tunlease</span>
     </a>
-    <nav aria-label="Primary navigation">
-      <a href="#install">Install</a>
-      <a href="#use">Use</a>
+    <nav aria-label="Project links">
+      <a href="https://github.com/iml885203/tunlease/blob/main/docs/self-hosting.md">Self-host</a>
       <a href="https://github.com/iml885203/tunlease">GitHub <span aria-hidden="true">↗</span></a>
     </nav>
   </header>
 
-  <main id="top">
-    <section class="hero shell">
-      <div class="eyebrow"><span></span> Open source · fixed callback URLs</div>
+  <main class="shell">
+    <section class="intro">
+      <div class="eyebrow"><i></i> Open source · fixed callback URLs</div>
       <h1>Debug the real webhook.<br><em>On your laptop.</em></h1>
-      <p class="lede">Claim one path on an existing callback endpoint. Its live traffic reaches localhost while every other path keeps serving the real app.</p>
-      <div class="hero-actions">
-        <a class="button primary" href="#install">Install the CLI</a>
-        <a class="button ghost" href="https://github.com/iml885203/tunlease">View on GitHub</a>
+      <p>Claim one path on an existing callback endpoint. Its traffic reaches localhost while every other path keeps serving the real app.</p>
+      <div class="links">
+        <a class="button primary" href="https://github.com/iml885203/tunlease">View on GitHub</a>
+        <a class="button" href="https://github.com/iml885203/tunlease/blob/main/docs/self-hosting.md">Self-hosting guide</a>
       </div>
-
-      <div class="terminal hero-terminal" aria-label="Tunlease command example">
-        <div class="terminal-bar">
-          <div class="dots" aria-hidden="true"><i></i><i></i><i></i></div>
-          <span>terminal</span>
-          <button class="copy" type="button" data-copy="tul claim '/demo/my-webhook/' -p 8080 -g tunlease.dotw.me">Copy</button>
-        </div>
-        <pre><code><span class="prompt">$</span> tul claim <span class="path">'/demo/my-webhook/'</span> -p 8080 -g tunlease.dotw.me
-
-<span class="success">● Connected</span>  /demo/my-webhook/ <span class="arrow">→</span> localhost:8080
-<span class="muted">  Waiting for requests… (Ctrl+C to release)</span></code></pre>
-      </div>
-
-      <div class="route" aria-label="Traffic routing">
-        <div><b>Provider</b><span>fixed URL</span></div>
-        <i></i>
-        <div class="active"><img src="icon.svg" alt="" width="22" height="22"><b>Tunlease</b><span>claimed path</span></div>
-        <i></i>
-        <div><b>localhost:8080</b><span>your code</span></div>
+      <div class="route" aria-label="Provider traffic is routed through Tunlease to localhost">
+        <span>Provider</span><i>→</i><strong><img src="icon.svg" width="20" height="20" alt=""> Tunlease</strong><i>→</i><span>localhost:8080</span>
       </div>
     </section>
 
-    <section class="section shell" id="install">
-      <div class="section-heading">
-        <div>
-          <span class="kicker">01 / Install</span>
-          <h2>One command away.</h2>
+    <section class="terminal" aria-label="Install and use Tunlease">
+      <div class="terminal-bar">
+        <div class="dots" aria-hidden="true"><i></i><i></i><i></i></div>
+        <span>Get started</span>
+      </div>
+
+      <div class="block install">
+        <div class="block-title"><span>1</span> Install</div>
+        <div class="tabs" role="tablist" aria-label="Installation method">
+          <button role="tab" aria-selected="true" data-install="brew">macOS / Linux</button>
+          <button role="tab" aria-selected="false" data-install="scoop">Windows</button>
+          <button role="tab" aria-selected="false" data-install="direct">Direct</button>
         </div>
-        <p>Pick the installer already familiar to your platform. The CLI command is always <code>tul</code>.</p>
-      </div>
-
-      <div class="install-grid">
-        <article class="install-card featured">
-          <div class="card-top"><span>macOS &amp; Linux</span><small>Homebrew</small></div>
-          <div class="command"><code>brew install iml885203/tap/tunlease</code><button class="copy" type="button" data-copy="brew install iml885203/tap/tunlease">Copy</button></div>
-        </article>
-        <article class="install-card">
-          <div class="card-top"><span>Windows</span><small>Scoop</small></div>
-          <div class="command multiline"><code>scoop bucket add tunlease https://github.com/iml885203/scoop-bucket<br>scoop install tunlease</code><button class="copy" type="button" data-copy="scoop bucket add tunlease https://github.com/iml885203/scoop-bucket&#10;scoop install tunlease">Copy</button></div>
-        </article>
-        <article class="install-card">
-          <div class="card-top"><span>Direct</span><small>macOS &amp; Linux</small></div>
-          <div class="command"><code>curl -fsSL https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/install.sh | bash</code><button class="copy" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/install.sh | bash">Copy</button></div>
-        </article>
-      </div>
-    </section>
-
-    <section class="section use-section" id="use">
-      <div class="shell">
-        <div class="section-heading light">
-          <div>
-            <span class="kicker">02 / Use</span>
-            <h2>Keep the URL.<br>Move the handler.</h2>
-          </div>
-          <p>No provider reconfiguration. No temporary callback URL. When you stop the claim, traffic returns to the original app.</p>
+        <div class="command">
+          <code id="install-command">brew install iml885203/tap/tunlease</code>
+          <button class="copy" type="button" data-copy-target="install-command">Copy</button>
         </div>
+      </div>
 
-        <ol class="steps">
-          <li>
-            <span class="step-number">01</span>
-            <div><h3>Start your service</h3><p>Run the webhook handler on your laptop, for example on port <code>8080</code>.</p></div>
-          </li>
-          <li>
-            <span class="step-number">02</span>
-            <div><h3>Claim its path</h3><div class="inline-code"><code>tul claim '/webhooks/stripe/*' -p 8080</code><button class="copy" type="button" data-copy="tul claim '/webhooks/stripe/*' -p 8080">Copy</button></div></div>
-          </li>
-          <li>
-            <span class="step-number">03</span>
-            <div><h3>Debug live traffic</h3><p>Requests appear in the terminal and reach localhost. Press <kbd>Ctrl</kbd> + <kbd>C</kbd> to release.</p></div>
-          </li>
-        </ol>
+      <div class="block use">
+        <div class="block-title"><span>2</span> Claim your path</div>
+        <div class="command">
+          <code id="claim-command">tul claim '/demo/my-webhook/' -p 8080 -g tunlease.dotw.me</code>
+          <button class="copy" type="button" data-copy-target="claim-command">Copy</button>
+        </div>
+        <pre><span class="success">● Connected</span>  /demo/my-webhook/ <span class="arrow">→</span> localhost:8080
+<span class="muted">  Waiting for requests… (Ctrl+C to release)</span></pre>
       </div>
-    </section>
 
-    <section class="cta shell">
-      <img src="icon.svg" width="62" height="62" alt="Tunlease icon">
-      <div>
-        <span class="kicker">Run it your way</span>
-        <h2>Ready to keep your callback URL?</h2>
-        <p>Try the public demo with test traffic, inspect the source, or deploy your own gateway.</p>
-      </div>
-      <div class="cta-actions">
-        <a class="button primary" href="https://github.com/iml885203/tunlease">GitHub repository <span aria-hidden="true">↗</span></a>
-        <a class="button outline" href="https://github.com/iml885203/tunlease/blob/main/docs/self-hosting.md">Self-hosting guide <span aria-hidden="true">↗</span></a>
-      </div>
+      <p class="note"><span>That’s it.</span> Keep the command running while you debug.</p>
     </section>
   </main>
 
   <footer class="shell">
-    <a class="brand" href="#top"><img src="icon.svg" width="28" height="28" alt=""><span>Tunlease</span></a>
-    <p>Open source under the MIT License.</p>
+    <span>MIT licensed</span>
+    <span>Built for staging webhooks.</span>
   </footer>
 
   <script src="site.js"></script>
