@@ -6,7 +6,7 @@ the quality gate, and how to propose changes.
 ## Development setup
 
 You need Go (see the version in [`go.mod`](go.mod)). Docker is used for the
-containerised lint target and the end-to-end suite.
+end-to-end suite.
 
 ```bash
 git clone https://github.com/iml885203/tunlease.git
@@ -58,8 +58,7 @@ filing a public issue.
 
 ## Releases
 
-Maintainers should follow the [release runbook](docs/releasing.md). It covers
-GitHub Releases, gateway images, the Homebrew tap, and Homebrew Core readiness.
+Maintainers should follow the [release runbook](docs/releasing.md).
 
 ## License
 

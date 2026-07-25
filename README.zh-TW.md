@@ -97,65 +97,12 @@ callback，包含其中的資料與 credential。請先啟動本機服務、只 
 [開發者指南](docs/developer-guide.zh-TW.md)。Installer 會在更換 binary 前
 驗證發布的 SHA-256 checksum。
 
-## 元件與部署模型
-
-全部都是同一個 `tul` binary，用 subcommand 切換角色：
-
-| 命令 | 執行於 | 職責 |
-|---|---|---|
-| `tul claim`（及 `list` / `release`） | 開發者電腦 | 把一條 path 連到本機服務 |
-| `tul gateway` | 前置於 app | 管理 active path、終止 tunnel、路由 request 並 proxy 到原 app |
-
-Gateway 位於 app 前面，並包辦 server 端所有事情。它把 control plane 放在
-固定的 `/_tunlease` 底下；其餘 path 都是第三方流量——符合 claim
-時 tunnel 給開發者，否則 proxy 回 `fail_open_url`（原始 app）；沒有原始 app
-的 public demo relay 也可以改回設定的固定錯誤。沒有獨立的 sidecar process。
-
-- **任何環境、單一 app origin** — 跑 `tul gateway`，把 `fail_open_url` 指向 app 的 Service，並將
-  gateway 部署在 app 前面（Ingress → gateway）。這是 Helm chart 部署的模型。
-
-Gateway 不會呼叫 Kubernetes API，因此 Kubernetes 不是必要條件——它只是平台模型的建議部署目標。
-
-## 嵌入 tunnel client
-
-Go 應用程式可以直接嵌入相同的 path ownership、重新連線與 tunnel engine，使用者不需要另外安裝 `tul` binary。
-
-```bash
-go get github.com/iml885203/tunlease/pkg/tunnelclient@latest
-```
-
-認證方式、完整 lifecycle 範例、API 行為、錯誤處理、升級與整合測試請看[嵌入 Go client](docs/go-client.zh-TW.md)。
-
-## 本機開發
-
-需要 Go 與 Docker Compose；只有驗證部署 manifest 時才需要 Helm 和 kubectl。
-
-每個 clone 執行一次，啟用 formatting、vet 與 lint pre-commit hook：
-
-```bash
-make hooks
-```
-
-```bash
-make build      # 建置 tul binary 到 bin/
-make test       # 執行 Go tests
-make lint       # 由 Go 下載並執行與 CI 相同的固定版 golangci-lint
-make preflight  # build、vet、race test、lint 與格式檢查
-make e2e        # gateway + origin app + local app + 真實 CLI
-```
-
 ## 依角色閱讀
 
 - **要接第三方 callback 或整合 provider 的開發者：**[開發者指南](docs/developer-guide.zh-TW.md)——安裝、provider security、設定、CLI 與疑難排解（[English](docs/developer-guide.md)）
 - **自行架設 Tunlease：**[部署指南](docs/self-hosting.zh-TW.md)——gateway 設定、routing、Helm、rollout 與安全（[English](docs/self-hosting.md)）
 - **要理解或修改系統的貢獻者：**[架構](docs/architecture.zh-TW.md)——control/data plane、routing 與復原流程（[English](docs/architecture.md)）
 - **要在 Go 應用程式嵌入 tunnel 的開發者：**[嵌入 Go client](docs/go-client.zh-TW.md)——module 設定、lifecycle API、錯誤與測試（[English](docs/go-client.md)）
-
-## 目前狀態
-
-Gateway、CLI 與可重用 Go client 皆可運作。目前刻意只支援單一 gateway
-replica：active path 與 WebSocket session 在同一 process。Gateway 重啟會斷線；
-恢復後，仍在執行的 client 會重新連線並登記 path。
 
 ## 參與貢獻
 

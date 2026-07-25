@@ -103,57 +103,6 @@ See the [developer guide](docs/developer-guide.md) for configuration, lifecycle
 commands, `--output json` automation, and troubleshooting. The installers
 verify the published SHA-256 checksum before replacing the binary.
 
-## Components and deployment model
-
-It is all one `tul` binary; a subcommand selects the role:
-
-| Command | Runs on | Responsibility |
-|---|---|---|
-| `tul claim` (also `list` / `release`) | Developer machine | Connect a path to a local service |
-| `tul gateway` | In front of the app | Own active paths, terminate tunnels, route requests, and proxy to the original app |
-
-The gateway sits in front of the app and does everything on the server side. It
-serves its control plane under the fixed `/_tunlease` prefix; every
-other path is third-party traffic — tunnelled to the developer when a claim
-matches, otherwise proxied to `fail_open_url` (the original app). A public demo
-relay without an original app may return a configured error instead. There is
-no separate sidecar process.
-
-- **Any host, one app origin** — run `tul gateway` with `fail_open_url` pointed at the
-  app's Service and deploy it in front of the app (Ingress → gateway). This is
-  the model the Helm chart deploys. Kubernetes is optional.
-
-The gateway does not call the Kubernetes API, so Kubernetes is not required — it
-is just the recommended target for the platform model.
-
-## Embedding the tunnel client
-
-Go applications can embed the same connected-path and reconnect engine used by the standalone CLI. Their users do not need the `tul` binary.
-
-```bash
-go get github.com/iml885203/tunlease/pkg/tunnelclient@latest
-```
-
-See [Embedding the Go client](docs/go-client.md) for authentication, a complete lifecycle example, API behavior, errors, upgrades, and integration testing.
-
-## Local development
-
-Go and Docker Compose are required. Helm and kubectl are only needed to validate deployment manifests.
-
-Enable the formatting/vet/lint pre-commit hook once per clone:
-
-```bash
-make hooks
-```
-
-```bash
-make build   # Build the tul binary into bin/
-make test    # Run the Go test suite
-make lint    # Run the same Go-downloaded, pinned golangci-lint version as CI
-make preflight # Build, vet, race-test, lint, and reject formatting drift
-make e2e     # gateway + origin app + local app + real CLI
-```
-
 ## Documentation
 
 Choose the shortest path for your role:
@@ -162,13 +111,6 @@ Choose the shortest path for your role:
 - **Self-hosting Tunlease:** [Deployment guide](docs/self-hosting.md) — gateway setup, routing, Helm, rollout, and security ([繁中](docs/self-hosting.zh-TW.md))
 - **Contributor understanding the system:** [Architecture](docs/architecture.md) — control/data planes, routing, lifecycle, and recovery ([繁中](docs/architecture.zh-TW.md))
 - **Go application author:** [Embedding the Go client](docs/go-client.md) — module setup, lifecycle API, errors, and testing ([繁中](docs/go-client.zh-TW.md))
-
-## Status
-
-The gateway, CLI, and reusable Go client are functional. The supported
-deployment is deliberately one gateway replica: active paths and their
-WebSocket sessions live in the same process. A restart disconnects them; active
-clients reconnect and register their paths again when the gateway returns.
 
 ## Contributing
 
