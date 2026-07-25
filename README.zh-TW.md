@@ -139,7 +139,7 @@ make hooks
 ```bash
 make build      # 建置 tunle binary 到 bin/
 make test       # 執行 Go tests
-make lint       # 執行與 CI 相同固定版本的 golangci-lint
+make lint       # 由 Go 下載並執行與 CI 相同的固定版 golangci-lint
 make preflight  # build、vet、race test、lint 與格式檢查
 make e2e        # gateway + origin app + local app + 真實 CLI
 ```

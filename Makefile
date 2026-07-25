@@ -2,7 +2,7 @@ BIN := bin
 VERSION ?= dev
 BUILD_TIME ?= unknown
 LDFLAGS := -s -w
-LINT_IMAGE := golangci/golangci-lint:v2.12.2-alpine
+GOLANGCI_LINT := github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 export CGO_ENABLED=0
 
 .PHONY: build test test-race e2e fmt fmt-check vet lint hooks preflight clean
@@ -29,7 +29,7 @@ vet:
 	go vet ./...
 
 lint:
-	docker run --rm -v "$(CURDIR):/app" -w /app $(LINT_IMAGE) golangci-lint run ./...
+	go run $(GOLANGCI_LINT) run ./...
 
 hooks:
 	git config core.hooksPath .githooks

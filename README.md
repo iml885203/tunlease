@@ -151,7 +151,7 @@ make hooks
 ```bash
 make build   # Build the tunle binary into bin/
 make test    # Run the Go test suite
-make lint    # Run the same pinned golangci-lint version as CI
+make lint    # Run the same Go-downloaded, pinned golangci-lint version as CI
 make preflight # Build, vet, race-test, lint, and reject formatting drift
 make e2e     # gateway + origin app + local app + real CLI
 ```
