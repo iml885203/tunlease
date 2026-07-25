@@ -13,8 +13,16 @@ in the README.
 The workflow calculates the next stable semantic version and runs formatting,
 vet, build, race tests, pinned lint, and Helm validation before it creates an
 annotated tag. It then publishes multi-architecture gateway images to GHCR and
-creates a GitHub Release with CLI binaries and SHA-256 files. A failed
-preflight never creates a version tag.
+creates a GitHub Release with CLI binaries and SHA-256 files. After publishing,
+it dispatches the Homebrew tap updater, waits for its formula tests and merge,
+and verifies that the formula matches the new version. A failed preflight
+never creates a version tag.
+
+Configure the `HOMEBREW_TAP_TOKEN` repository secret before releasing. Use a
+fine-grained personal access token restricted to `iml885203/homebrew-tap` with
+repository permissions `Actions: Read and write` and `Contents: Read`. The tap
+updater uses its own repository-scoped `GITHUB_TOKEN` to update and merge the
+formula; the cross-repository token only dispatches and observes that workflow.
 
 Pushing a valid annotated tag manually remains a recovery path; tag CI uses
 the same reusable artifact workflow.
@@ -33,9 +41,10 @@ instead.
 
 ## Update the Homebrew tap
 
-The tap checks the latest GitHub Release every six hours and opens a formula
-update pull request. The updater waits for its macOS and Linux tests and merges
-the PR only after both pass.
+The release workflow immediately dispatches the tap updater after artifacts
+are published. The tap also checks the latest GitHub Release every six hours as
+a fallback. The updater opens a formula update pull request, waits for its
+macOS and Linux tests, and merges the PR only after both pass.
 
 If automation is unavailable, update it manually after the GitHub Release
 succeeds:

@@ -11,8 +11,15 @@
 Workflow 會計算下一個 stable semantic version，並在建立 annotated tag
 之前執行 formatting、vet、build、race tests、固定版本 lint 與 Helm
 驗證。接著才會將 multi-architecture gateway images 發布到 GHCR，並建立
-包含 CLI binaries 與 SHA-256 files 的 GitHub Release。Preflight
-失敗時不會建立 version tag。
+包含 CLI binaries 與 SHA-256 files 的 GitHub Release。發布完成後會 dispatch
+Homebrew tap updater、等待 formula tests 與 merge，並確認 formula 已符合新
+版本。Preflight 失敗時不會建立 version tag。
+
+發布前需設定 `HOMEBREW_TAP_TOKEN` repository secret。請使用只限
+`iml885203/homebrew-tap` 的 fine-grained personal access token，repository
+permissions 只需 `Actions: Read and write` 與 `Contents: Read`。Tap updater
+會使用自身 repository-scoped `GITHUB_TOKEN` 更新及 merge formula；跨 repo
+token 只負責 dispatch 與觀察該 workflow。
 
 手動推送合法的 annotated tag 仍可作為復原方式；tag CI 會使用同一份
 reusable artifact workflow。
@@ -30,8 +37,9 @@ docker pull "ghcr.io/iml885203/tunlease-gateway:$VERSION"
 
 ## 更新 Homebrew tap
 
-Tap 每六小時檢查最新 GitHub Release，並建立 formula update pull request。
-Updater 會等待 macOS 與 Linux tests，且只在兩者都通過後 merge 該 PR。
+Release workflow 會在 artifacts 發布後立即 dispatch tap updater；tap 仍每六
+小時檢查最新 GitHub Release 作為 fallback。Updater 會建立 formula update pull
+request、等待 macOS 與 Linux tests，且只在兩者都通過後 merge 該 PR。
 
 若 automation 無法使用，請在 GitHub Release 成功後手動更新：
 
