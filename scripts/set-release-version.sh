@@ -14,8 +14,8 @@ if ! printf '%s\n' "$version" |
 fi
 chart_version=${version#v}
 
-script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-root=$(CDPATH= cd -- "$script_dir/.." && pwd)
+script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+root=$(CDPATH='' cd -- "$script_dir/.." && pwd)
 
 sed -i.bak \
 	-e "s/^version: .*/version: $chart_version/" \

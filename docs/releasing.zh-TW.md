@@ -13,9 +13,10 @@ Workflow 會計算下一個 stable semantic version，並在建立 annotated tag
 驗證。接著才會將 multi-architecture gateway images 發布到 GHCR，並建立
 包含 CLI binaries 與 SHA-256 files 的 GitHub Release。發布完成後會平行
 dispatch Homebrew tap 與 Scoop bucket updaters、等待各自的 tests 與 merge，
-並確認兩個 package definitions 都符合新版本。Release 的最後一步會將對應的
-immutable gateway image dispatch 到 public relay infrastructure，並等待該次
-部署及 health check 成功。Preflight 失敗時不會建立 version tag。
+並確認兩個 package definitions 都符合新版本。它也會更新 `main` 上的 Helm
+chart version、`appVersion` 與預設 gateway image tag。Release 的最後一步會將
+對應的 immutable gateway image dispatch 到 public relay infrastructure，
+並等待該次部署及 health check 成功。Preflight 失敗時不會建立 version tag。
 
 發布前需設定 `HOMEBREW_TAP_TOKEN` repository secret。請使用只限
 `iml885203/homebrew-tap` 的 fine-grained personal access token，repository

@@ -16,10 +16,11 @@ annotated tag. It then publishes multi-architecture gateway images to GHCR and
 creates a GitHub Release with CLI binaries and SHA-256 files. After publishing,
 it dispatches the Homebrew tap and Scoop bucket updaters in parallel, waits for
 their tests and merges, and verifies that both package definitions match the
-new version. As the final release step, it dispatches the matching immutable
-gateway image to the public relay infrastructure and waits for that deployment
-and its health check to succeed. A failed preflight never creates a version
-tag.
+new version. It also updates the Helm chart version, `appVersion`, and default
+gateway image tag on `main`. As the final release step, it dispatches the
+matching immutable gateway image to the public relay infrastructure and waits
+for that deployment and its health check to succeed. A failed preflight never
+creates a version tag.
 
 Configure the `HOMEBREW_TAP_TOKEN` repository secret before releasing. Use a
 fine-grained personal access token restricted to `iml885203/homebrew-tap` with
