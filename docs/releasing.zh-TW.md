@@ -13,6 +13,11 @@
 檢查通過後，workflow 會建立版本，並自動處理 GitHub Release、gateway
 images、Helm defaults、Homebrew、Scoop 與 public relay deployment。
 
+建立 version tag 後，gateway image 與 CLI release 會各自獨立發布。
+Versioned gateway image 一出現在 GHCR，public relay deployment 就會開始，
+不會等待 CLI assets、Homebrew、Scoop 或 Helm defaults。Package-manager
+updates 會等待 GitHub Release，因為它們會使用 release metadata 或 binaries。
+
 ## 必要 secrets
 
 將以下 fine-grained personal access tokens 設為 repository secrets：

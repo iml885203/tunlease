@@ -93,19 +93,31 @@ jobs:
           git push origin "$VERSION"
           echo "Created $VERSION from $GITHUB_SHA" >>"$GITHUB_STEP_SUMMARY"
 
-  publish:
+  publish-images:
     needs: tag
     permissions:
-      contents: write
+      contents: read
       packages: write
     uses: ./.github/workflows/publish.yml
     with:
       version: ${{ needs.tag.outputs.version }}
       ref: ${{ github.sha }}
+      target: images
+    secrets: inherit
+
+  publish-release:
+    needs: tag
+    permissions:
+      contents: write
+    uses: ./.github/workflows/publish.yml
+    with:
+      version: ${{ needs.tag.outputs.version }}
+      ref: ${{ github.sha }}
+      target: release-cli
     secrets: inherit
 
   update-chart-defaults:
-    needs: [tag, publish]
+    needs: [tag, publish-images]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -126,7 +138,7 @@ jobs:
           git push origin HEAD:main
 
   update-homebrew:
-    needs: [tag, publish]
+    needs: [tag, publish-release]
     uses: ./.github/workflows/sync-homebrew.yml
     with:
       version: ${{ needs.tag.outputs.version }}
@@ -134,7 +146,7 @@ jobs:
       HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
   update-scoop:
-    needs: [tag, publish]
+    needs: [tag, publish-release]
     uses: ./.github/workflows/sync-scoop.yml
     with:
       version: ${{ needs.tag.outputs.version }}
@@ -142,7 +154,7 @@ jobs:
       SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
 
   deploy-public-relay:
-    needs: [tag, publish, update-chart-defaults, update-homebrew, update-scoop]
+    needs: [tag, publish-images]
     uses: ./.github/workflows/deploy-public-relay.yml
     with:
       version: ${{ needs.tag.outputs.version }}

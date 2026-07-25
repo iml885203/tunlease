@@ -9,9 +9,15 @@ on:
       ref:
         required: true
         type: string
+      target:
+        description: Artifact group to publish
+        required: false
+        default: all
+        type: string
 
 jobs:
   images:
+    if: inputs.target == 'all' || inputs.target == 'images'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -46,6 +52,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
   release-cli:
+    if: inputs.target == 'all' || inputs.target == 'release-cli'
     runs-on: ubuntu-latest
     permissions:
       contents: write
