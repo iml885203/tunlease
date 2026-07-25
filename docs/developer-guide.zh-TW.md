@@ -48,4 +48,11 @@ credential 與個資。Local handler 必須 idempotent：provider retry 或 disp
 - **TLS error**：安裝 internal CA；`--insecure` 只作可信網路的暫時診斷。
 - **Gateway path 被拒絕**：只傳 host 或 origin URL，不要附 `/_tunlease`。
 
-使用 `tunle update` 更新；團隊自行託管 release 時設定 `TUNLEASE_BASE_URL`。
+使用 Homebrew 更新：
+
+```bash
+brew upgrade tunlease
+```
+
+直接安裝的使用者可重新執行 installer。只有從 release mirror 安裝時才設定
+`TUNLEASE_BASE_URL`。

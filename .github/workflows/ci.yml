@@ -2,19 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [main]
     tags: ["v*"]
   pull_request:
-    branches: [master]
-
-# Image registry is configurable via repository/organization variables:
-#   vars.REGISTRY  e.g. ghcr.io/<owner>  or  your-registry.example.com/<project>
-# Push credentials come from secrets (defaults suit GitHub Container Registry):
-#   secrets.REGISTRY_USERNAME / secrets.REGISTRY_PASSWORD
-# When REGISTRY is unset the image build still runs but the push is skipped,
-# so forks get a working pipeline with no secrets configured.
-env:
-  REGISTRY: ${{ vars.REGISTRY }}
+    branches: [main]
 
 jobs:
   test:
@@ -39,46 +30,59 @@ jobs:
         with:
           version: v2.12.2
 
-  # Multi-arch (amd64+arm64) so images run on either node type. Go cross-compiles
-  # natively via the Dockerfile's TARGETOS/TARGETARCH. Multi-arch manifests can't
-  # be loaded locally, so we build --push directly. The gateway image is built
-  # from this repo's single Dockerfile via --target.
+  validate-release-tag:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a semantic version tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta|rc)\.[1-9][0-9]*)?$ ]]; then
+            echo "release tags must look like v1.2.3 or v1.2.3-rc.1" >&2
+            exit 1
+          fi
+
+  # Versioned multi-arch gateway images are published with every release tag.
   images:
     runs-on: ubuntu-latest
-    needs: [test, lint]
-    if: github.event_name == 'push' && vars.REGISTRY != ''
+    needs: [test, lint, validate-release-tag]
+    if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: read
       packages: write
-    strategy:
-      matrix:
-        include:
-          - target: gateway
-            name: tunlease-gateway
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
-      - name: Log in to registry
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
         with:
-          registry: ${{ vars.REGISTRY_HOST || 'ghcr.io' }}
-          username: ${{ secrets.REGISTRY_USERNAME || github.actor }}
-          password: ${{ secrets.REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
-      - name: Build and push
-        uses: docker/build-push-action@v6
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/tunlease-gateway
+          tags: |
+            type=semver,pattern=v{{version}}
+            type=semver,pattern=v{{major}}.{{minor}},enable=${{ !contains(github.ref_name, '-') }}
+            type=semver,pattern=v{{major}},enable=${{ !contains(github.ref_name, '-') }}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+      - uses: docker/build-push-action@v6
         with:
           context: .
-          target: ${{ matrix.target }}
+          target: gateway
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ env.REGISTRY }}/${{ matrix.name }}:${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
 
   # Cross-compile the CLI for every supported platform and attach the binaries
   # (plus checksums) to the GitHub Release when a tag is pushed.
   release-cli:
     runs-on: ubuntu-latest
-    needs: [test, lint]
+    needs: [test, lint, validate-release-tag]
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
@@ -102,6 +106,7 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
+          generate_release_notes: true
           files: |
             tunle-linux-*
             tunle-darwin-*

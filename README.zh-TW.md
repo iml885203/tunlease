@@ -11,8 +11,10 @@ tunle claim /webhooks/stripe/* --to 8080 --gateway staging.myapp.com
 
 ![claim 前固定 callback URL 回 app 的 404，`tunle claim` 後同一 URL 打到本機服務](assets/demo.gif)
 
-它不另外發布 endpoint，而是保留已經在使用的 callback URL。
-[與其他工具的比較](#與其他工具的比較)。
+概念上類似 [ngrok](https://ngrok.com/)、
+[localtunnel](https://github.com/localtunnel/localtunnel) 與
+[bore](https://github.com/ekzhang/bore)，但 Tunlease 解決的問題不同：它保留已經
+在使用的 callback URL，只暫時轉送你 claim 的 path。
 
 [開發者快速上手](#開發者快速上手) · [平台部署](docs/platform-deployment.zh-TW.md) · [架構](docs/architecture.zh-TW.md) · [疑難排解](docs/developer-guide.zh-TW.md#疑難排解)
 
@@ -50,83 +52,41 @@ origin fallback。Fallback 只涵蓋 dispatch 前沒有 matching connected sessi
 Gateway、Ingress 與 origin outage 需另外規劃 infrastructure 或 bypass。詳見
 [路由與失敗契約](docs/architecture.zh-TW.md#路由與失敗契約)。
 
-## 與其他工具的比較
-
-精神上類似 [ngrok](https://ngrok.com/)、
-[localtunnel](https://github.com/localtunnel/localtunnel)、
-[bore](https://github.com/ekzhang/bore)——但工作流程不同。一般 tunnel 會替本機服務
-發布一個 public endpoint；Tunlease 則保留第三方**既有的固定** callback URL，讓開發者
-暫時 claim 其中個別 path。
-
-下表比較的是工具內建的工作流程，不是透過 custom domain、routing policy 或外部
-reverse proxy 能組合出的所有架構。
-
-| | Tunlease | ngrok | localtunnel | bore |
-|---|---|---|---|---|
-| 主要 endpoint 模型 | 既有 host + 已 claim 的 HTTP path | Public 或 custom URL | 分配的 URL | Public TCP port |
-| Session 範圍、互斥的 path claim | 內建 | 沒有對等的 claim workflow | 無 | 無 |
-| 未 claim 的 path 自動回原 app | 內建 | 需要 routing policy | 需要外部 proxy | 需要外部 proxy |
-| 多位開發者在同一 host claim 不同 path | 內建 | 需要手動設定 routing | 無 | 無 |
-| 目前受支援的 relay 為開源且可自架 | 是 | 否 | 是 | 是 |
-
 ## 開發者快速上手
 
-平台團隊把既有 callback host 導入 gateway，並提供 URL、允許的 prefix 與可選 token
-後，安裝 CLI 再 claim。若 gateway 還沒架好，請先看
-[平台部署指南](docs/platform-deployment.zh-TW.md)。
+平台團隊提供 gateway host、允許的 path 與可選 token 後，安裝 CLI：
+
+```bash
+brew install iml885203/tap/tunlease
+```
+
+或安裝最新且經過驗證的 binary：
 
 ```bash
 # macOS 與 Linux
-# 請把 YOUR_TUNLEASE_HOST 換成團隊發布 installer 的 host。
-curl -fsSL https://YOUR_TUNLEASE_HOST/install/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/install.sh | bash
 ```
 
 ```powershell
 # Windows PowerShell（amd64）
-# 請把 YOUR_TUNLEASE_HOST 換成團隊發布 installer 的 host。
-irm https://YOUR_TUNLEASE_HOST/install/install.ps1 | iex
+irm https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/install.ps1 | iex
 ```
 
-接著用一行命令認領 path——用 `--gateway` 指向 gateway（就填平台團隊給你的網域），
-用 `--to` 把 path 轉到本機 port。Ctrl+C 釋放 path。scheme 預設為 `https`，可以省略；
-若 gateway 沒有 TLS（例如 localhost）就明確加上 `http://`。control plane 的路徑前綴由
-client 自動附加，所以不用自己在網址裡加 `/_tunlease`。
+接著 claim callback path：
 
 ```bash
 tunle claim /webhooks/provider/callback/* --to 8080 --gateway myapp.example.com
 ```
 
+Ctrl+C 釋放。預設使用 HTTPS；只有 gateway 沒有 TLS（例如 localhost）才明確填
+`http://`。若 gateway 還沒架好，請先看[平台部署指南](docs/platform-deployment.zh-TW.md)。
+
 Claim 會收到真實 staging callback，包含其中的資料與 credential。請先啟動本機服務、
 只 claim 所需的最窄 path，並確保 callback handler idempotent：provider retry
 與 request 中途 tunnel failure 都可能造成重複 delivery。
 
-若不想每次重打 `--gateway`，設成環境變數一次即可：
-
-```bash
-export TUNLEASE_GATEWAY=myapp.example.com
-tunle claim /webhooks/provider/callback/* --to 8080
-```
-
-或者，若偏好用檔案，放進 `~/.tunlease.yaml`（gateway 需要認證時，`token:` 也寫這裡）：
-
-```yaml
-gateway: myapp.example.com
-```
-
-其餘指令都用同樣的簡短形式：
-
-```bash
-tunle list                                    # 你目前的 claim
-tunle list --all                              # gateway 上所有 claim
-tunle release /webhooks/provider/callback/*   # 釋放某個 path
-tunle release --to 8080                        # 釋放某個 port 上的全部
-tunle update                                  # 自我更新 binary
-tunle --version
-```
-
-完整用法與問題排查請看[開發者指南](docs/developer-guide.zh-TW.md)。
-
-Windows amd64 使用 Tunlease 專用的 tunnel transport。PowerShell installer 會驗證發布的 SHA-256 checksum，並把上一版保留為 `tunle.exe.prev`。
+設定、lifecycle 指令與問題排查請看[開發者指南](docs/developer-guide.zh-TW.md)。
+Installer 會在更換 binary 前驗證發布的 SHA-256 checksum。
 
 ## 元件與部署模型
 

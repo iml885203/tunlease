@@ -142,7 +142,6 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 	releaseCmd.Flags().IntVar(&relTo, "to", 0, "release all claims tunnelled to this local port")
 	addClientFlags(releaseCmd)
 	root.AddCommand(releaseCmd)
-	root.AddCommand(newUpdateCommand(version))
 	root.AddCommand(newGatewayCommand())
 	return root
 }

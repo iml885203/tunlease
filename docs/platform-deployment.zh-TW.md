@@ -21,12 +21,10 @@ session 位於 process memory。
 
 ## Helm
 
-先把 gateway image 發布到 cluster 可 pull 的 registry，再使用 private values：
+Chart 預設使用已發布的 gateway image。建立 private values，設定既有 host、
+原 app、允許的 path 與可選 token：
 
 ```yaml
-image:
-  repository: YOUR_REGISTRY/tunlease-gateway
-  tag: IMAGE_VERSION
 ingress:
   host: callbacks.staging.example.com
   path: /
@@ -46,6 +44,9 @@ helm upgrade --install tunlease charts/tunlease \
   --namespace tunlease --create-namespace \
   -f values.private.yaml
 ```
+
+只有使用自己的 build 或 release mirror 時才覆寫 `image.repository` 與
+`image.tag`。
 
 Gateway YAML 只有 `listen`、必填 `fail_open_url`、`max_claims`、`whitelist`
 與 `tokens`。未知欄位會讓啟動失敗，避免舊設定被靜默忽略。`/_tunlease`

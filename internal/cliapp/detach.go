@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -52,8 +51,8 @@ func runDetach(paths []string, to int, gateway, token string, insecure bool, sch
 	if scheme != "" {
 		cmd.Env = append(cmd.Env, "TUNLEASE_DEFAULT_SCHEME="+scheme)
 	}
-	// New session so the daemon survives the parent shell / agent turn.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	// Start independently so the daemon survives the parent shell / agent turn.
+	configureDetachedProcess(cmd)
 	if err := cmd.Start(); err != nil {
 		return err
 	}
@@ -104,21 +103,10 @@ func daemonLogPath(to int) string {
 	return filepath.Join(base, fmt.Sprintf("claim-%d.log", to))
 }
 
-func processAlive(pid int) bool {
-	p, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	// On Unix, signal 0 checks existence without affecting the process.
-	return p.Signal(syscall.Signal(0)) == nil
-}
-
 // stopDaemon kills the background daemon holding a claim, if one is recorded.
 func stopDaemon(c stateClaim) {
-	if c.PID > 0 && processAlive(c.PID) {
-		if p, err := os.FindProcess(c.PID); err == nil {
-			_ = p.Signal(syscall.SIGTERM)
-		}
+	if c.PID > 0 {
+		terminateProcess(c.PID)
 	}
 }
 

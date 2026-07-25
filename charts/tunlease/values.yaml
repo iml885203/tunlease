@@ -1,6 +1,6 @@
 image:
-  repository: your-registry.example.com/tunlease-gateway
-  tag: latest
+  repository: ghcr.io/iml885203/tunlease-gateway
+  tag: v0.1.0
   pullPolicy: IfNotPresent
 
 service:

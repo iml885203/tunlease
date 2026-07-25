@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$BaseUrl = if ($env:TUNLEASE_BASE_URL) { $env:TUNLEASE_BASE_URL.TrimEnd('/') } else { "https://tunlease.example.com/install" }
+$BaseUrl = if ($env:TUNLEASE_BASE_URL) { $env:TUNLEASE_BASE_URL.TrimEnd('/') } else { "https://github.com/iml885203/tunlease/releases/latest/download" }
 $InstallDir = if ($env:TUNLEASE_INSTALL_DIR) { $env:TUNLEASE_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA "tunlease" }
 
 if (-not [Environment]::Is64BitOperatingSystem) {

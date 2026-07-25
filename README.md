@@ -11,8 +11,11 @@ tunle claim /webhooks/stripe/* --to 8080 --gateway staging.myapp.com
 
 ![A fixed callback URL returns the app's 404 until you claim its path, then reaches a server on your laptop — on the same URL](assets/demo.gif)
 
-Instead of publishing another endpoint, it keeps the callback URL already in
-use. [How it compares](#how-it-compares).
+Similar in spirit to [ngrok](https://ngrok.com/),
+[localtunnel](https://github.com/localtunnel/localtunnel), and
+[bore](https://github.com/ekzhang/bore), Tunlease solves a different problem:
+it keeps the callback URL already in use and temporarily redirects only the
+path you claim.
 
 [Developer quick start](#quick-start-for-developers) · [Platform setup](docs/platform-deployment.md) · [Architecture](docs/architecture.md) · [Troubleshooting](docs/developer-guide.md#troubleshooting)
 
@@ -53,87 +56,45 @@ covers requests that have no matching connected session before dispatch.
 Gateway, Ingress, and origin outages require separate infrastructure or bypass
 planning. See the [routing and failure contract](docs/architecture.md#routing-and-failure-contract).
 
-## How it compares
-
-Similar in spirit to [ngrok](https://ngrok.com/),
-[localtunnel](https://github.com/localtunnel/localtunnel), and
-[bore](https://github.com/ekzhang/bore) — but built around a different
-workflow. General-purpose tunnels publish a public endpoint for a local
-service. Tunlease instead keeps a third party's **existing fixed** callback URL
-and lets developers temporarily claim individual paths on it.
-
-This table compares the tools' built-in workflow, not every setup that can be
-assembled with custom domains, routing policies, or an external reverse proxy.
-
-| | Tunlease | ngrok | localtunnel | bore |
-|---|---|---|---|---|
-| Primary endpoint model | Existing host + claimed HTTP path | Public or custom URL | Assigned URL | Public TCP port |
-| Session-scoped, exclusive path claim | Built in | No equivalent claim workflow | No | No |
-| Unclaimed paths automatically use the original app | Built in | Requires routing policy | Requires external proxy | Requires external proxy |
-| Multiple developers claim separate paths on one host | Built in | Requires manual routing | No | No |
-| Current supported relay is open source and self-hostable | Yes | No | Yes | Yes |
-
 ## Quick start for developers
 
-Once your platform team has routed the existing callback host through a gateway
-and given you its URL, allowed prefix, and optional token, install the CLI and
-claim. If the gateway is not set up yet, see the
-[platform deployment guide](docs/platform-deployment.md).
+Once your platform team gives you the gateway host, an allowed path, and an
+optional token, install the CLI:
+
+```bash
+brew install iml885203/tap/tunlease
+```
+
+Or install the latest verified binary:
 
 ```bash
 # macOS and Linux
-# Replace YOUR_TUNLEASE_HOST with your team's published distribution host.
-curl -fsSL https://YOUR_TUNLEASE_HOST/install/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/install.sh | bash
 ```
 
 ```powershell
 # Windows PowerShell (amd64)
-# Replace YOUR_TUNLEASE_HOST with your team's published distribution host.
-irm https://YOUR_TUNLEASE_HOST/install/install.ps1 | iex
+irm https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/install.ps1 | iex
 ```
 
-Then claim a path in one command — point it at the gateway with `--gateway`
-(just the domain your platform team gave you) and forward the path to a local
-port with `--to`. Ctrl+C releases it. The scheme defaults to `https`, so you can
-omit it; use an explicit `http://` for a gateway without TLS (e.g. localhost).
+Then claim the callback path:
 
 ```bash
 tunle claim /webhooks/provider/callback/* --to 8080 --gateway myapp.example.com
 ```
+
+Ctrl+C releases it. HTTPS is the default; use an explicit `http://` only for a
+gateway without TLS, such as localhost. If the gateway is not set up yet, see the
+[platform deployment guide](docs/platform-deployment.md).
 
 Claims receive real staging callbacks, including their data and credentials.
 Start your local service first, claim the narrowest path you need, and make
 callback handling idempotent: provider retries and mid-request tunnel failures
 can produce duplicate delivery.
 
-To avoid repeating `--gateway`, set it once as an environment variable:
-
-```bash
-export TUNLEASE_GATEWAY=myapp.example.com
-tunle claim /webhooks/provider/callback/* --to 8080
-```
-
-Or, if you prefer a file, put it in `~/.tunlease.yaml` (a `token:` line goes
-here too if the gateway requires authentication):
-
-```yaml
-gateway: myapp.example.com
-```
-
-Everything else uses the same short form:
-
-```bash
-tunle list                                    # your active claims
-tunle list --all                              # every claim on the gateway
-tunle release /webhooks/provider/callback/*   # release a path
-tunle release --to 8080                        # release everything on a port
-tunle update                                  # self-update the binary
-tunle --version
-```
-
-See the [developer guide](docs/developer-guide.md) for full usage and troubleshooting.
-
-Windows amd64 uses Tunlease's purpose-built tunnel transport. The PowerShell installer verifies the published SHA-256 checksum and preserves the previous executable as `tunle.exe.prev`.
+See the [developer guide](docs/developer-guide.md) for configuration, lifecycle
+commands, and troubleshooting. The installers verify the published SHA-256
+checksum before replacing the binary.
 
 ## Components and deployment model
 

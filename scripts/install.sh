@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_URL="${TUNLEASE_BASE_URL:-https://tunlease.example.com/install}"
+BASE_URL="${TUNLEASE_BASE_URL:-https://github.com/iml885203/tunlease/releases/latest/download}"
 TMP=""
 SUMS=""
 trap 'rm -f "${TMP:-}" "${SUMS:-}"' EXIT

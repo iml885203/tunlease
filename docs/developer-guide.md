@@ -53,5 +53,11 @@ or a tunnel failure after dispatch can duplicate delivery.
 - **Gateway path rejected** — pass only a host or origin URL, without
   `/_tunlease`; the prefix is automatic.
 
-Use `tunle update` for self-update and `TUNLEASE_BASE_URL` when your team hosts
-releases at a custom location.
+Upgrade with Homebrew:
+
+```bash
+brew upgrade tunlease
+```
+
+For a direct installation, run the installer again. Set `TUNLEASE_BASE_URL`
+only when installing from a release mirror.

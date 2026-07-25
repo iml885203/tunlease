@@ -21,13 +21,10 @@ only; active sessions are in memory and process-local.
 
 ## Helm
 
-Build and publish the gateway image to a registry the cluster can pull from,
-then use private values such as:
+The chart uses the published gateway image by default. Create private values
+for the existing host, original app, allowed paths, and optional tokens:
 
 ```yaml
-image:
-  repository: YOUR_REGISTRY/tunlease-gateway
-  tag: IMAGE_VERSION
 ingress:
   host: callbacks.staging.example.com
   path: /
@@ -47,6 +44,9 @@ helm upgrade --install tunlease charts/tunlease \
   --namespace tunlease --create-namespace \
   -f values.private.yaml
 ```
+
+Override `image.repository` and `image.tag` only when using your own build or
+release mirror.
 
 The gateway YAML has only five fields: `listen`, required `fail_open_url`,
 `max_claims`, `whitelist`, and `tokens`. Unknown fields fail startup so removed
