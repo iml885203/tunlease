@@ -140,16 +140,16 @@ See [Embedding the Go client](docs/go-client.md) for authentication, a complete 
 
 Go and Docker Compose are required. Helm and kubectl are only needed to validate deployment manifests.
 
-Enable the formatting/vet pre-commit hook once per clone:
+Enable the formatting/vet/lint pre-commit hook once per clone:
 
 ```bash
-git config core.hooksPath .githooks
+make hooks
 ```
 
 ```bash
 make build   # Build the tunle binary into bin/
 make test    # Run the Go test suite
-make lint    # Run the pinned golangci-lint container
+make lint    # Run the same pinned golangci-lint version as CI
 make preflight # Build, vet, race-test, lint, and reject formatting drift
 make e2e     # gateway + origin app + local app + real CLI
 ```

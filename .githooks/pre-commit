@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Pre-commit gate: reject formatting drift and vet errors before they reach CI.
+# Pre-commit gate: reject formatting drift, vet errors, and lint errors before
+# they reach CI.
 # Enable once per clone:
 #   git config core.hooksPath .githooks
 # Bypass a single commit with --no-verify when you must.
@@ -16,11 +17,7 @@ fi
 echo "pre-commit: go vet"
 go vet ./...
 
-# golangci-lint is optional locally (CI runs it in a pinned container); run it
-# only when it's on PATH so contributors without it can still commit.
-if command -v golangci-lint >/dev/null 2>&1; then
-  echo "pre-commit: golangci-lint"
-  golangci-lint run ./...
-fi
+echo "pre-commit: golangci-lint"
+make lint
 
 echo "pre-commit: OK"

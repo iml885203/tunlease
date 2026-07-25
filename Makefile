@@ -5,7 +5,7 @@ LDFLAGS := -s -w
 LINT_IMAGE := golangci/golangci-lint:v2.12.2-alpine
 export CGO_ENABLED=0
 
-.PHONY: build test test-race e2e fmt fmt-check vet lint preflight clean
+.PHONY: build test test-race e2e fmt fmt-check vet lint hooks preflight clean
 
 build:
 	go build -ldflags "$(LDFLAGS) -X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME)" -o $(BIN)/tunle ./cmd/tunlease
@@ -30,6 +30,10 @@ vet:
 
 lint:
 	docker run --rm -v "$(CURDIR):/app" -w /app $(LINT_IMAGE) golangci-lint run ./...
+
+hooks:
+	git config core.hooksPath .githooks
+	@echo "Git hooks enabled from .githooks"
 
 # Local equivalent of the CI quality gate.
 preflight: fmt-check

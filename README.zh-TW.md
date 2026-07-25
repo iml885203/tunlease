@@ -128,10 +128,16 @@ go get github.com/iml885203/tunlease/pkg/tunnelclient@latest
 
 需要 Go 與 Docker Compose；只有驗證部署 manifest 時才需要 Helm 和 kubectl。
 
+每個 clone 執行一次，啟用 formatting、vet 與 lint pre-commit hook：
+
+```bash
+make hooks
+```
+
 ```bash
 make build      # 建置 tunle binary 到 bin/
 make test       # 執行 Go tests
-make lint       # 執行固定版本的 golangci-lint container
+make lint       # 執行與 CI 相同固定版本的 golangci-lint
 make preflight  # build、vet、race test、lint 與格式檢查
 make e2e        # gateway + origin app + local app + 真實 CLI
 ```
