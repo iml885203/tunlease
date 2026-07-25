@@ -44,6 +44,12 @@ workflow wait for and verify the resulting deployment. The infrastructure
 workflow rejects dispatches whose source repository or stable semantic version
 payload is unexpected.
 
+The **Deploy public relay** workflow can also be run manually with an existing
+stable release version. It verifies that the GitHub Release exists, sends the
+same authenticated dispatch used by the release workflow, and waits for the
+relay deployment. Use this to verify a replaced token or recover the relay
+without publishing another release.
+
 Pushing a valid annotated tag manually remains a recovery path; tag CI uses
 the same reusable artifact workflow.
 

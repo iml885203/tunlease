@@ -38,6 +38,11 @@ token。Repository permissions 需為 `Actions: Read` 與
 部署。Infrastructure workflow 會拒絕來源 repository 或 stable semantic
 version payload 不符合預期的 dispatch。
 
+也可以用既有 stable release version 手動執行 **Deploy public relay**
+workflow。它會確認 GitHub Release 存在、送出與 release workflow 相同的已驗證
+dispatch，並等待 relay 部署完成。可用此方式驗證更換後的 token，或在不發布
+另一個 release 的情況下復原 relay。
+
 手動推送合法的 annotated tag 仍可作為復原方式；tag CI 會使用同一份
 reusable artifact workflow。
 

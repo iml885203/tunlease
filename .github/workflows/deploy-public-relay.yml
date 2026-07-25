@@ -1,0 +1,88 @@
+name: Deploy public relay
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+    secrets:
+      PUBLIC_RELAY_INFRA_TOKEN:
+        required: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Existing stable release version to deploy
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Validate release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          if ! printf '%s\n' "$VERSION" |
+            grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
+            echo "invalid stable release version: $VERSION" >&2
+            exit 1
+          fi
+          gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null
+
+      - name: Dispatch public relay deployment
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_RELAY_INFRA_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          : "${GH_TOKEN:?set the PUBLIC_RELAY_INFRA_TOKEN repository secret}"
+          jq -n \
+            --arg version "$VERSION" \
+            --arg source_repository "$GITHUB_REPOSITORY" \
+            --arg source_sha "$GITHUB_SHA" \
+            --arg source_run_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            '{
+              event_type: "tunlease-release",
+              client_payload: {
+                version: $version,
+                source_repository: $source_repository,
+                source_sha: $source_sha,
+                source_run_url: $source_run_url
+              }
+            }' >"$RUNNER_TEMP/public-relay-dispatch.json"
+          gh api \
+            --method POST \
+            repos/iml885203/tunlease-public-relay-infra/dispatches \
+            --input "$RUNNER_TEMP/public-relay-dispatch.json"
+
+      - name: Wait for public relay deployment
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_RELAY_INFRA_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          run_id=
+          for _ in $(seq 1 60); do
+            run_id=$(
+              gh api \
+                "repos/iml885203/tunlease-public-relay-infra/actions/workflows/deploy.yml/runs?event=repository_dispatch&per_page=20" \
+                --jq ".workflow_runs[] | select(.display_title == \"Deploy public relay $VERSION\") | .id" |
+                head -n 1
+            )
+            [ -n "$run_id" ] && break
+            sleep 5
+          done
+          if [ -z "$run_id" ]; then
+            echo "public relay deployment did not start" >&2
+            exit 1
+          fi
+          gh run watch "$run_id" \
+            --repo iml885203/tunlease-public-relay-infra \
+            --exit-status \
+            --interval 5
+          echo "Public relay deployed $VERSION in run $run_id" >>"$GITHUB_STEP_SUMMARY"
