@@ -16,8 +16,6 @@ tul claim '/demo/my-tunnel/' -p 8080 -g tunlease-relay.dotw.me
 [bore](https://github.com/ekzhang/bore)，但 Tunlease 解決的問題不同：它保留已經
 在使用的 callback URL，只暫時轉送你 claim 的 path。
 
-[開發者快速上手](#開發者快速上手) · [自行架設](docs/self-hosting.zh-TW.md) · [架構](docs/architecture.zh-TW.md) · [疑難排解](docs/developer-guide.zh-TW.md#疑難排解)
-
 [English](README.md) · [繁體中文](README.zh-TW.md)
 
 ## 運作方式
@@ -99,10 +97,10 @@ callback，包含其中的資料與 credential。請先啟動本機服務、只 
 
 ## 依角色閱讀
 
-- **要接第三方 callback 或整合 provider 的開發者：**[開發者指南](docs/developer-guide.zh-TW.md)——安裝、provider security、設定、CLI 與疑難排解（[English](docs/developer-guide.md)）
-- **自行架設 Tunlease：**[部署指南](docs/self-hosting.zh-TW.md)——gateway 設定、routing、Helm、rollout 與安全（[English](docs/self-hosting.md)）
-- **要理解或修改系統的貢獻者：**[架構](docs/architecture.zh-TW.md)——control/data plane、routing 與復原流程（[English](docs/architecture.md)）
-- **要在 Go 應用程式嵌入 tunnel 的開發者：**[嵌入 Go client](docs/go-client.zh-TW.md)——module 設定、lifecycle API、錯誤與測試（[English](docs/go-client.md)）
+- **要接第三方 callback 或整合 provider 的開發者：** [開發者指南](docs/developer-guide.zh-TW.md)——安裝、provider security、設定、CLI 與疑難排解
+- **自行架設 Tunlease：** [部署指南](docs/self-hosting.zh-TW.md)——gateway 設定、routing、Helm、rollout 與安全
+- **要理解或修改系統的貢獻者：** [架構](docs/architecture.zh-TW.md)——control/data plane、routing 與復原流程
+- **要在 Go 應用程式嵌入 tunnel 的開發者：** [嵌入 Go client](docs/go-client.zh-TW.md)——module 設定、lifecycle API、錯誤與測試
 
 ## 參與貢獻
 
