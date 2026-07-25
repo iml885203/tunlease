@@ -14,9 +14,9 @@ The workflow calculates the next stable semantic version and runs formatting,
 vet, build, race tests, pinned lint, and Helm validation before it creates an
 annotated tag. It then publishes multi-architecture gateway images to GHCR and
 creates a GitHub Release with CLI binaries and SHA-256 files. After publishing,
-it dispatches the Homebrew tap updater, waits for its formula tests and merge,
-and verifies that the formula matches the new version. A failed preflight
-never creates a version tag.
+it dispatches the Homebrew tap and Scoop bucket updaters in parallel, waits for
+their tests and merges, and verifies that both package definitions match the
+new version. A failed preflight never creates a version tag.
 
 Configure the `HOMEBREW_TAP_TOKEN` repository secret before releasing. Use a
 fine-grained personal access token restricted to `iml885203/homebrew-tap` with
@@ -25,6 +25,12 @@ updater uses its own repository-scoped `GITHUB_TOKEN` to update and merge the
 formula; the cross-repository token only dispatches and observes that workflow.
 The **Sync Homebrew** workflow can be run manually with an existing release
 version to verify the token or recover without publishing another release.
+
+Configure the `SCOOP_BUCKET_TOKEN` repository secret the same way, restricted
+to `iml885203/scoop-bucket` with repository permissions
+`Actions: Read and write` and `Contents: Read`. The **Sync Scoop** workflow can
+also be run manually with an existing release version for verification or
+recovery.
 
 Pushing a valid annotated tag manually remains a recovery path; tag CI uses
 the same reusable artifact workflow.
@@ -88,10 +94,12 @@ binaries.
 
 ## Update the Scoop bucket
 
-The `iml885203/scoop-bucket` repository checks the latest release every six
-hours and opens a manifest update pull request. Its Windows workflow installs
-the manifest with Scoop and runs the CLI; the updater waits and merges the PR
-only after that test succeeds.
+The release workflow immediately dispatches the
+`iml885203/scoop-bucket` updater after artifacts are published. The bucket also
+checks the latest release every six hours as a fallback. Its Windows workflow
+installs the manifest with Scoop and runs the CLI; the updater waits and merges
+the PR only after that test succeeds. The release workflow then verifies that
+the merged manifest matches the new version.
 
 The manifest uses the Windows binary and SHA-256 file published by the release
 workflow. If automation is unavailable, update its `version`, download URL, and

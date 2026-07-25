@@ -11,9 +11,10 @@
 Workflow 會計算下一個 stable semantic version，並在建立 annotated tag
 之前執行 formatting、vet、build、race tests、固定版本 lint 與 Helm
 驗證。接著才會將 multi-architecture gateway images 發布到 GHCR，並建立
-包含 CLI binaries 與 SHA-256 files 的 GitHub Release。發布完成後會 dispatch
-Homebrew tap updater、等待 formula tests 與 merge，並確認 formula 已符合新
-版本。Preflight 失敗時不會建立 version tag。
+包含 CLI binaries 與 SHA-256 files 的 GitHub Release。發布完成後會平行
+dispatch Homebrew tap 與 Scoop bucket updaters、等待各自的 tests 與 merge，
+並確認兩個 package definitions 都符合新版本。Preflight 失敗時不會建立
+version tag。
 
 發布前需設定 `HOMEBREW_TAP_TOKEN` repository secret。請使用只限
 `iml885203/homebrew-tap` 的 fine-grained personal access token，repository
@@ -22,6 +23,11 @@ permissions 只需 `Actions: Read and write` 與 `Contents: Read`。Tap updater
 token 只負責 dispatch 與觀察該 workflow。
 可用既有 release version 手動執行 **Sync Homebrew** workflow，以驗證 token
 或在不發布另一個 release 的情況下復原。
+
+`SCOOP_BUCKET_TOKEN` repository secret 也採用相同設定，但只限
+`iml885203/scoop-bucket`，repository permissions 為
+`Actions: Read and write` 與 `Contents: Read`。也可用既有 release version
+手動執行 **Sync Scoop** workflow，以進行驗證或復原。
 
 手動推送合法的 annotated tag 仍可作為復原方式；tag CI 會使用同一份
 reusable artifact workflow。
@@ -80,9 +86,11 @@ Tap 會從 source build，不依賴預先編譯的 release binaries。
 
 ## 更新 Scoop bucket
 
-`iml885203/scoop-bucket` repository 每六小時檢查最新 release 並建立
-manifest update pull request。其 Windows workflow 會透過 Scoop 安裝
-manifest 並執行 CLI；updater 會等待，且只在該 test 成功後 merge PR。
+Release workflow 會在 artifacts 發布後立即 dispatch
+`iml885203/scoop-bucket` updater；bucket 仍每六小時檢查最新 release 作為
+fallback。其 Windows workflow 會透過 Scoop 安裝 manifest 並執行 CLI；
+updater 會等待，且只在該 test 成功後 merge PR。接著 release workflow
+會確認 merged manifest 符合新版本。
 
 Manifest 使用 release workflow 發布的 Windows binary 與 SHA-256 file。
 若 automation 無法使用，須一起更新 `version`、download URL 與 hash。

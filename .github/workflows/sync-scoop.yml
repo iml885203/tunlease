@@ -1,0 +1,72 @@
+name: Sync Scoop
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Released semantic version tag
+        required: true
+        type: string
+    secrets:
+      SCOOP_BUCKET_TOKEN:
+        description: Fine-grained token for the scoop-bucket Actions API
+        required: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Released semantic version tag to verify
+        required: true
+        type: string
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch bucket updater and wait for completion
+        env:
+          GH_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          previous_run_id=$(gh run list \
+            --repo iml885203/scoop-bucket \
+            --workflow update.yml \
+            --event workflow_dispatch \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId')
+
+          gh workflow run update.yml \
+            --repo iml885203/scoop-bucket \
+            --ref main
+
+          for _ in $(seq 1 20); do
+            run_id=$(gh run list \
+              --repo iml885203/scoop-bucket \
+              --workflow update.yml \
+              --event workflow_dispatch \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId')
+            [ -n "$run_id" ] && [ "$run_id" != "$previous_run_id" ] && break
+            run_id=
+            sleep 3
+          done
+          [ -n "${run_id:-}" ] || {
+            echo "Scoop bucket updater did not start" >&2
+            exit 1
+          }
+
+          gh run watch "$run_id" \
+            --repo iml885203/scoop-bucket \
+            --exit-status
+
+          manifest_version=$(gh api \
+            repos/iml885203/scoop-bucket/contents/bucket/tunlease.json \
+            --jq '.content' |
+            base64 --decode |
+            jq -r '.version')
+          if [ "v$manifest_version" != "$VERSION" ]; then
+            echo "Scoop manifest is v$manifest_version, expected $VERSION" >&2
+            exit 1
+          fi
+          echo "Scoop manifest updated to $VERSION" >>"$GITHUB_STEP_SUMMARY"
