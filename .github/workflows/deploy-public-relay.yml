@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Existing stable release version to deploy
+        description: Existing stable gateway image version to deploy
         required: true
         type: string
 
@@ -24,9 +24,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Validate release
+      - name: Validate gateway image
         env:
-          GH_TOKEN: ${{ github.token }}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/tunlease-gateway
           VERSION: ${{ inputs.version }}
         run: |
           if ! printf '%s\n' "$VERSION" |
@@ -34,7 +34,7 @@ jobs:
             echo "invalid stable release version: $VERSION" >&2
             exit 1
           fi
-          gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null
+          docker buildx imagetools inspect "$IMAGE:$VERSION" >/dev/null
 
       - name: Dispatch relay deployment and wait for completion
         env:

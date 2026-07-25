@@ -16,6 +16,12 @@ After its checks pass, the workflow creates the version and handles the GitHub
 Release, gateway images, Helm defaults, Homebrew, Scoop, and public relay
 deployment.
 
+Gateway image publishing and CLI release publishing run independently after
+the version tag is created. Public relay deployment starts as soon as the
+versioned gateway image is available in GHCR; it does not wait for CLI assets,
+Homebrew, Scoop, or Helm defaults. Package-manager updates wait for the GitHub
+Release because they consume its release metadata or binaries.
+
 ## Required secrets
 
 Configure these fine-grained personal access tokens as repository secrets:
