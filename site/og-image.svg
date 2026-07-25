@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#f3f1e8"/>
+  <rect x="48" y="48" width="1104" height="534" rx="24" fill="none" stroke="#0b1715" stroke-width="2"/>
+  <g transform="translate(80 81) scale(.09375)">
+    <rect width="512" height="512" rx="112" fill="#176b87"/>
+    <g transform="translate(0 20)">
+      <path d="M146 340V234C146 173 195 124 256 124C317 124 366 173 366 234V340"
+            fill="none" stroke="#fff" stroke-width="72" stroke-linecap="round"/>
+      <circle cx="256" cy="300" r="34" fill="#7fe0cf"/>
+    </g>
+  </g>
+  <text x="146" y="119" fill="#0b1715" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="40" font-weight="750">Tunlease</text>
+  <text x="88" y="250" fill="#0b1715" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="72" font-weight="780" letter-spacing="-3">Debug the real webhook.</text>
+  <text x="88" y="332" fill="#176b87" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="72" font-weight="780" letter-spacing="-3">On your laptop.</text>
+  <g transform="translate(88 420)" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="24">
+    <rect width="1024" height="100" rx="10" fill="#07110f"/>
+    <text x="34" y="61" fill="#e7f4ef">Provider</text>
+    <text x="194" y="61" fill="#789189">→</text>
+    <rect x="240" y="24" width="182" height="52" rx="5" fill="#fffdf6"/>
+    <text x="263" y="59" fill="#0b1715" font-weight="700">Tunlease</text>
+    <text x="461" y="61" fill="#789189">→</text>
+    <text x="507" y="61" fill="#7fe0cf">localhost:8080</text>
+  </g>
+</svg>
