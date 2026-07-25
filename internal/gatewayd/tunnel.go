@@ -25,9 +25,11 @@ const (
 	headerPaths    = "X-Tunlease-Paths"
 	headerReplaces = "X-Tunlease-Replaces"
 	headerStarted  = "X-Tunlease-Started"
+	headerExpires  = "X-Tunlease-Expires"
 	streamRequest  = byte(1)
 	streamRelease  = byte(2)
 	streamAck      = byte(3)
+	streamExpire   = byte(4)
 )
 
 var errClaimOwner = errors.New("claim belongs to another owner")
@@ -36,11 +38,12 @@ var errClaimOwner = errors.New("claim belongs to another owner")
 // handshake claims its paths, and closing that connection releases them. Each
 // HTTP request opens one yamux stream to the owning client.
 type Tunnel struct {
-	store    registry.Store
-	tokens   map[string]Token
-	mu       sync.Mutex
-	sessions map[string]*yamux.Session
-	setup    time.Duration
+	store                 registry.Store
+	tokens                map[string]Token
+	mu                    sync.Mutex
+	sessions              map[string]*yamux.Session
+	setup                 time.Duration
+	DynamicClientIdentity bool
 }
 
 func NewTunnel(store registry.Store, tokens map[string]Token) *Tunnel {
@@ -60,7 +63,7 @@ func (t *Tunnel) ActiveSessions() int {
 }
 
 func (t *Tunnel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	principal, ok := authenticate(t.tokens, r)
+	principal, ok := authenticate(t.tokens, t.DynamicClientIdentity, r)
 	if !ok {
 		writeTunnelError(w, http.StatusUnauthorized, "unauthorized", "valid bearer token required", nil)
 		return
@@ -96,6 +99,9 @@ func (t *Tunnel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set(headerClaim, claim.ID)
 	w.Header().Set(headerOwner, claim.Owner)
 	w.Header().Set(headerStarted, claim.Started.Format(time.RFC3339Nano))
+	if claim.ExpiresAt != nil {
+		w.Header().Set(headerExpires, claim.ExpiresAt.Format(time.RFC3339Nano))
+	}
 	ws, err := websocket.Accept(w, r, nil)
 	if err != nil {
 		_ = t.store.Release(principal.Owner, claim.ID)
@@ -128,6 +134,13 @@ func (t *Tunnel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = conn.SetDeadline(time.Time{})
+	var expiry *time.Timer
+	if claim.ExpiresAt != nil {
+		expiry = time.AfterFunc(time.Until(*claim.ExpiresAt), func() {
+			t.expireClaim(claim.ID, principal.Owner)
+		})
+		defer expiry.Stop()
+	}
 	<-session.CloseChan()
 }
 
@@ -169,6 +182,7 @@ func (t *Tunnel) writeClaimError(w http.ResponseWriter, err error) {
 	var conflict *registry.Conflict
 	var notAllowed *registry.NotAllowed
 	var tooMany *registry.TooManyClaims
+	var tooManyOwner *registry.TooManyOwnerClaims
 	switch {
 	case errors.Is(err, registry.ErrInvalidPath):
 		writeTunnelError(w, http.StatusBadRequest, "invalid_request", "each path must start with /, end with /*, and contain no other wildcard", nil)
@@ -178,6 +192,8 @@ func (t *Tunnel) writeClaimError(w http.ResponseWriter, err error) {
 		writeTunnelError(w, http.StatusForbidden, "path_not_allowed", "path is outside the allowlist", nil)
 	case errors.As(err, &tooMany):
 		writeTunnelError(w, http.StatusServiceUnavailable, "claim_limit_reached", err.Error(), nil)
+	case errors.As(err, &tooManyOwner):
+		writeTunnelError(w, http.StatusTooManyRequests, "owner_claim_limit_reached", err.Error(), nil)
 	default:
 		writeTunnelError(w, http.StatusInternalServerError, "internal_error", "could not create tunnel", nil)
 	}
@@ -207,6 +223,37 @@ func (t *Tunnel) CloseClaim(id string) {
 // its acknowledgement, then closes the tunnel. No server-side tombstone is
 // needed because a successful return means the client has stopped reconnecting.
 func (t *Tunnel) ReleaseClaim(id, owner string) error {
+	return t.terminateClaim(id, owner, streamRelease)
+}
+
+func (t *Tunnel) expireClaim(id, owner string) {
+	claim, found := t.claim(id)
+	if !found || claim.Owner != owner {
+		return
+	}
+	t.mu.Lock()
+	session := t.sessions[id]
+	delete(t.sessions, id)
+	t.mu.Unlock()
+	_ = t.store.Release(owner, id)
+	if session == nil || session.IsClosed() {
+		return
+	}
+	defer func() { _ = session.Close() }()
+	stream, err := session.Open()
+	if err != nil {
+		return
+	}
+	defer func() { _ = stream.Close() }()
+	_ = stream.SetDeadline(time.Now().Add(t.setup))
+	if _, err = stream.Write([]byte{streamExpire}); err != nil {
+		return
+	}
+	var acknowledgement [1]byte
+	_, _ = io.ReadFull(stream, acknowledgement[:])
+}
+
+func (t *Tunnel) terminateClaim(id, owner string, kind byte) error {
 	claim, found := t.claim(id)
 	if !found {
 		return registry.ErrNotFound
@@ -226,7 +273,7 @@ func (t *Tunnel) ReleaseClaim(id, owner string) error {
 	}
 	defer func() { _ = stream.Close() }()
 	_ = stream.SetDeadline(time.Now().Add(t.setup))
-	if _, err = stream.Write([]byte{streamRelease}); err != nil {
+	if _, err = stream.Write([]byte{kind}); err != nil {
 		return err
 	}
 	var acknowledgement [1]byte

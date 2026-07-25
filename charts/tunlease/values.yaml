@@ -28,6 +28,13 @@ config:
   # Hide claim metadata while retaining release by an already-known claim ID.
   disableClaimList: false
   maxClaims: 64
+  # Optional safety limits. Zero keeps the existing unlimited behavior.
+  maxClaimsPerOwner: 0
+  maxClaimDuration: "0s"
+  minClaimPathSegments: 0
+  # Accept a stable client-generated bearer secret and isolate list/release by
+  # its hashed owner. The CLI creates this identity automatically.
+  dynamicClientIdentity: false
   # Path allowlist (opt-in): an empty list allows any path. The prefixes below
   # are an example — set the ones that cover your callbacks, or clear the list
   # on a trusted network. Restricting it stops anyone claiming paths like /admin.

@@ -51,15 +51,44 @@ Override `image.repository` and `image.tag` only when using your own build or
 release mirror.
 
 The gateway YAML fields are `listen`, one of `fail_open_url` or
-`unclaimed_status`, `disable_claim_list`, `max_claims`, `whitelist`, and
-`tokens`. Unknown fields fail startup so removed configuration cannot be
-silently ignored. `/_tunlease` and one replica are fixed, not values.
+`unclaimed_status`, `disable_claim_list`, `max_claims`,
+`max_claims_per_owner`, `max_claim_duration`, `min_claim_path_segments`,
+`dynamic_client_identity`, `whitelist`, and `tokens`. Unknown fields fail
+startup so removed configuration cannot be silently ignored. `/_tunlease` and
+one replica are fixed, not values.
 
 Empty `whitelist` permits every valid path. Empty tokens disable authentication;
 all clients then share the `anonymous` owner and can list or release each
 other's tunnels. Set `disable_claim_list: true` on an anonymous public demo to
 hide claim IDs while retaining release by an ID already recorded by the client.
 Use one secret token per owner for a non-demo gateway outside a trusted network.
+
+For a low-friction public demo, `dynamic_client_identity` lets the CLI create
+and persist a random identity without asking the user for a token. The gateway
+stores only its hash as the owner, filters `list` to that owner, and permits
+only that owner to release the claim. This isolates cooperative clients; it is
+not authentication because a malicious client can generate more identities.
+Do not configure static `tokens` at the same time.
+
+The following public-demo policy permits `/demo/testing/*` but rejects the
+broader `/demo/*`, limits each identity to one tunnel, and expires every claim
+after one minute:
+
+```yaml
+config:
+  maxClaims: 20
+  maxClaimsPerOwner: 1
+  maxClaimDuration: 1m
+  minClaimPathSegments: 2
+  dynamicClientIdentity: true
+  whitelist:
+    - /demo/
+```
+
+Expiry is terminal: the gateway notifies the client, closes the tunnel, and
+releases its paths. Reconnecting after network loss creates a new claim with a
+new duration. Rate-limit repeated connections at the edge when operating an
+untrusted public relay.
 
 ## Verify and operate
 

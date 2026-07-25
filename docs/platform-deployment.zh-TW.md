@@ -50,14 +50,38 @@ helm upgrade --install tunlease charts/tunlease \
 `image.tag`。
 
 Gateway YAML 欄位為 `listen`、`fail_open_url` 或 `unclaimed_status` 其中之一、
-`disable_claim_list`、`max_claims`、`whitelist` 與 `tokens`。未知欄位會讓啟動
-失敗，避免舊設定被靜默忽略。`/_tunlease` 與單一 replica 是固定條件，不是
-values。
+`disable_claim_list`、`max_claims`、`max_claims_per_owner`、
+`max_claim_duration`、`min_claim_path_segments`、`dynamic_client_identity`、
+`whitelist` 與 `tokens`。未知欄位會讓啟動失敗，避免舊設定被靜默忽略。
+`/_tunlease` 與單一 replica 是固定條件，不是 values。
 
 空 whitelist 允許所有合法 path。空 tokens 會停用認證；所有 client 共用
 `anonymous` owner，可互相 list 或 release tunnel。匿名 public demo 可設
 `disable_claim_list: true` 隱藏 claim ID，同時保留 client 以已記錄 ID 進行
 release；可信網路外且不是 demo 時，應為每位 owner 設定獨立 secret token。
+
+低摩擦的 public demo 可啟用 `dynamic_client_identity`。CLI 會自動建立並保存
+隨機身分，不要求使用者提供 token；gateway 只把其 hash 當作 owner、依 owner
+過濾 `list`，且只允許相同 owner release。這能隔離正常 client，但不是認證，
+因為惡意 client 仍可產生更多身分。不可同時設定 static `tokens`。
+
+以下 public demo policy 允許 `/demo/testing/*`、拒絕範圍較大的 `/demo/*`，
+每個身分限制一條 tunnel，且每次 claim 一分鐘後到期：
+
+```yaml
+config:
+  maxClaims: 20
+  maxClaimsPerOwner: 1
+  maxClaimDuration: 1m
+  minClaimPathSegments: 2
+  dynamicClientIdentity: true
+  whitelist:
+    - /demo/
+```
+
+到期是 terminal：gateway 會通知 client、關閉 tunnel 並釋放 paths。網路中斷後
+重新連線會建立新的 claim 與新的期限。營運不可信的 public relay 時，仍應在
+edge 限制重複連線頻率。
 
 ## 驗證與操作
 

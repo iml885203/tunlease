@@ -90,18 +90,26 @@ func runGateway(parent context.Context, configPath string) error {
 		logger.Warn("client authentication is disabled; only suitable for a trusted network")
 	}
 
-	store := registry.NewMemory(config.MaxClaims, config.Whitelist, logger)
+	store := registry.NewMemory(registry.Options{
+		MaxClaims:            config.MaxClaims,
+		MaxClaimsPerOwner:    config.MaxClaimsPerOwner,
+		MinClaimPathSegments: config.MinClaimPathSegments,
+		MaxClaimDuration:     config.MaxClaimDuration,
+		Allowed:              config.Whitelist,
+	}, logger)
 	tunnel := gatewayd.NewTunnel(store, gatewayTokens(config))
+	tunnel.DynamicClientIdentity = config.DynamicClientIdentity
 	failOpen, err := buildFailOpen(config)
 	if err != nil {
 		return err
 	}
 	gateway := &gatewayd.Server{
-		Store:            store,
-		Tokens:           gatewayTokens(config),
-		Tunnel:           tunnel,
-		FailOpen:         failOpen,
-		DisableClaimList: config.DisableClaimList,
+		Store:                 store,
+		Tokens:                gatewayTokens(config),
+		Tunnel:                tunnel,
+		FailOpen:              failOpen,
+		DisableClaimList:      config.DisableClaimList,
+		DynamicClientIdentity: config.DynamicClientIdentity,
 	}
 
 	ctx, stop := signal.NotifyContext(parent, syscall.SIGINT, syscall.SIGTERM)

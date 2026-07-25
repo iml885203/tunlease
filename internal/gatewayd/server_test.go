@@ -12,7 +12,7 @@ import (
 )
 
 func testServer(tokens map[string]Token) (*Server, *registry.Memory) {
-	store := registry.NewMemory(64, []string{"/ok/"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	store := registry.NewMemory(registry.Options{MaxClaims: 64, Allowed: []string{"/ok/"}}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	tunnel := NewTunnel(store, tokens)
 	origin := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -99,5 +99,40 @@ func TestClaimListCanBeDisabledWithoutDisablingRelease(t *testing.T) {
 	}
 	if code, _ := request(server, http.MethodDelete, ControlPrefix+"/api/v1/claims/"+claim.ID, ""); code != http.StatusNotFound {
 		t.Fatalf("release without live session code=%d", code)
+	}
+}
+
+func TestDynamicClientIdentityListsOnlyItsClaims(t *testing.T) {
+	server, store := testServer(nil)
+	server.DynamicClientIdentity = true
+	server.Tunnel.DynamicClientIdentity = true
+
+	aliceRequest := httptest.NewRequest(http.MethodGet, "/", nil)
+	aliceRequest.Header.Set("Authorization", "Bearer alice-generated-secret")
+	alice, ok := authenticate(nil, true, aliceRequest)
+	if !ok {
+		t.Fatal("alice identity was not accepted")
+	}
+	bobRequest := httptest.NewRequest(http.MethodGet, "/", nil)
+	bobRequest.Header.Set("Authorization", "Bearer bob-generated-secret")
+	bob, ok := authenticate(nil, true, bobRequest)
+	if !ok {
+		t.Fatal("bob identity was not accepted")
+	}
+	if _, err := store.Create(alice.Owner, []string{"/ok/alice/*"}, "localhost:1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Create(bob.Owner, []string{"/ok/bob/*"}, "localhost:1"); err != nil {
+		t.Fatal(err)
+	}
+
+	code, body := request(server, http.MethodGet, ControlPrefix+"/api/v1/claims", "alice-generated-secret")
+	claims, _ := body["claims"].([]any)
+	if code != http.StatusOK || len(claims) != 1 {
+		t.Fatalf("alice list: code=%d body=%v", code, body)
+	}
+	claim, _ := claims[0].(map[string]any)
+	if owner, _ := claim["owner"].(string); owner != alice.Owner {
+		t.Fatalf("alice saw owner %q", owner)
 	}
 }

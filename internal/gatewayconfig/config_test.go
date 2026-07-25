@@ -1,6 +1,11 @@
 package gatewayconfig
 
-import "testing"
+import (
+	"testing"
+	"time"
+
+	"gopkg.in/yaml.v3"
+)
 
 func TestDefaultsAndValidation(t *testing.T) {
 	config := Config{FailOpenURL: "http://app.default.svc"}
@@ -45,6 +50,21 @@ func TestTokenValidation(t *testing.T) {
 	config.Tokens = []Token{{Owner: "alice", Token: "same"}, {Owner: "bob", Token: "same"}}
 	if err := config.Validate(); err == nil {
 		t.Fatal("duplicate token passed validation")
+	}
+	config.Tokens = []Token{{Owner: "alice", Token: "secret"}}
+	config.DynamicClientIdentity = true
+	if err := config.Validate(); err == nil {
+		t.Fatal("dynamic identity with static tokens passed validation")
+	}
+}
+
+func TestDurationConfiguration(t *testing.T) {
+	var config Config
+	if err := yaml.Unmarshal([]byte("max_claim_duration: 1m\n"), &config); err != nil {
+		t.Fatal(err)
+	}
+	if config.MaxClaimDuration != time.Minute {
+		t.Fatalf("max claim duration = %s", config.MaxClaimDuration)
 	}
 }
 

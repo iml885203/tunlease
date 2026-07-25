@@ -62,7 +62,9 @@ tunle release --to 8080
 `-d` 是 `--detach` 的 shorthand，會啟動背景 process。Automation 必須在
 cleanup 執行 `release`。
 請以 command exit status 作為介面；human-readable output 不是穩定序列化格式。
-`~/.tunlease/state.json` 的本機 metadata 不含 token。
+`~/.tunlease/state.json` 會包含供啟用 dynamic identity 的 gateway 使用、每個
+gateway 各自隨機產生的 client identity。請保護此檔案；這些值能讓其他 process
+list 或 release 該身分的 claim，但不授予 cloud 或 account 權限。
 
 只 claim 最窄的 path，絕不要 claim `/`，並把 callback 視為真實 staging
 credential 與個資。Local handler 必須 idempotent：provider retry 或 dispatch
@@ -73,6 +75,10 @@ credential 與個資。Local handler 必須 idempotent：provider retry 或 disp
 - **`path_claimed`**：另一條 connected session 擁有重疊 prefix。
 - **`path_not_allowed`**：請平台團隊提供 allowlisted prefix。
 - **`claim_limit_reached`**：gateway 已達 `max_claims`。
+- **`owner_claim_limit_reached`**：這個 client identity 已達
+  `max_claims_per_owner`。
+- **`claim_expired`**：gateway 的 `max_claim_duration` 已終止 session 並釋放
+  paths。
 - **Request 到 origin**：確認 claim process 已連線、path 相符、本機 port 可回 HTTP。
 - **`502 claimed tunnel target unavailable`**：path 已被 claim，但 client 無法連到
   設定的 localhost port。啟動本機 service，並檢查 foreground output 或

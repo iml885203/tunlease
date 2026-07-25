@@ -1,8 +1,10 @@
 package gatewayd
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -16,11 +18,12 @@ type Token struct {
 }
 
 type Server struct {
-	Store            registry.Store
-	Tokens           map[string]Token
-	Tunnel           *Tunnel
-	FailOpen         http.Handler
-	DisableClaimList bool
+	Store                 registry.Store
+	Tokens                map[string]Token
+	Tunnel                *Tunnel
+	FailOpen              http.Handler
+	DisableClaimList      bool
+	DynamicClientIdentity bool
 }
 
 type principal struct {
@@ -28,15 +31,22 @@ type principal struct {
 }
 
 func (s *Server) auth(r *http.Request) (principal, bool) {
-	token, ok := authenticate(s.Tokens, r)
+	token, ok := authenticate(s.Tokens, s.DynamicClientIdentity, r)
 	return principal{owner: token.Owner}, ok
 }
 
-func authenticate(tokens map[string]Token, r *http.Request) (Token, bool) {
+func authenticate(tokens map[string]Token, dynamicClientIdentity bool, r *http.Request) (Token, bool) {
+	value := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if len(tokens) == 0 {
+		if dynamicClientIdentity {
+			if value == "" {
+				return Token{}, false
+			}
+			digest := sha256.Sum256([]byte(value))
+			return Token{Owner: "client:" + fmt.Sprintf("%x", digest[:])}, true
+		}
 		return Token{Owner: "anonymous"}, true
 	}
-	value := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	token, ok := tokens[value]
 	return token, ok && value != ""
 }
@@ -101,9 +111,14 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if _, ok := s.auth(r); !ok {
+	p, ok := s.auth(r)
+	if !ok {
 		errj(w, http.StatusUnauthorized, "unauthorized", "valid bearer token required")
 		return
 	}
-	write(w, http.StatusOK, map[string]any{"claims": s.Store.List()})
+	claims := s.Store.List()
+	if s.DynamicClientIdentity {
+		claims = s.Store.ListOwner(p.owner)
+	}
+	write(w, http.StatusOK, map[string]any{"claims": claims})
 }

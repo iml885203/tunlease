@@ -35,12 +35,17 @@ type TooManyClaims struct{}
 
 func (*TooManyClaims) Error() string { return "claim limit reached" }
 
+type TooManyOwnerClaims struct{}
+
+func (*TooManyOwnerClaims) Error() string { return "owner claim limit reached" }
+
 type Claim struct {
-	ID      string    `json:"claim_id"`
-	Owner   string    `json:"owner"`
-	Paths   []string  `json:"paths"`
-	Local   string    `json:"-"`
-	Started time.Time `json:"started_at"`
+	ID        string     `json:"claim_id"`
+	Owner     string     `json:"owner"`
+	Paths     []string   `json:"paths"`
+	Local     string     `json:"-"`
+	Started   time.Time  `json:"started_at"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
 // Store contains only claims backed by a live tunnel session. There is no
@@ -50,25 +55,40 @@ type Store interface {
 	Create(owner string, paths []string, local string) (Claim, error)
 	Release(owner, id string) error
 	List() []Claim
+	ListOwner(owner string) []Claim
 }
 
 type Memory struct {
-	mu      sync.Mutex
-	claims  map[string]Claim
-	max     int
-	allowed []string
-	log     *slog.Logger
+	mu               sync.Mutex
+	claims           map[string]Claim
+	max              int
+	maxPerOwner      int
+	minPathSegments  int
+	maxClaimDuration time.Duration
+	allowed          []string
+	log              *slog.Logger
 }
 
-func NewMemory(maxClaims int, allowed []string, logger *slog.Logger) *Memory {
+type Options struct {
+	MaxClaims            int
+	MaxClaimsPerOwner    int
+	MinClaimPathSegments int
+	MaxClaimDuration     time.Duration
+	Allowed              []string
+}
+
+func NewMemory(options Options, logger *slog.Logger) *Memory {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &Memory{
-		claims:  map[string]Claim{},
-		max:     maxClaims,
-		allowed: append([]string(nil), allowed...),
-		log:     logger,
+		claims:           map[string]Claim{},
+		max:              options.MaxClaims,
+		maxPerOwner:      options.MaxClaimsPerOwner,
+		minPathSegments:  options.MinClaimPathSegments,
+		maxClaimDuration: options.MaxClaimDuration,
+		allowed:          append([]string(nil), options.Allowed...),
+		log:              logger,
 	}
 }
 
@@ -81,6 +101,14 @@ func ValidPath(path string) bool {
 }
 
 func prefix(path string) string { return strings.TrimSuffix(path, "*") }
+
+func pathSegments(path string) int {
+	trimmed := strings.TrimSuffix(strings.TrimPrefix(path, "/"), "/*")
+	if trimmed == "" {
+		return 0
+	}
+	return len(strings.Split(trimmed, "/"))
+}
 
 func overlap(a, b string) bool {
 	return strings.HasPrefix(prefix(a), prefix(b)) ||
@@ -97,6 +125,9 @@ func (m *Memory) Create(owner string, paths []string, local string) (Claim, erro
 	for _, path := range paths {
 		if !ValidPath(path) {
 			return Claim{}, ErrInvalidPath
+		}
+		if pathSegments(path) < m.minPathSegments {
+			return Claim{}, &NotAllowed{Path: path}
 		}
 		allowed := len(m.allowed) == 0
 		for _, candidate := range m.allowed {
@@ -119,6 +150,17 @@ func (m *Memory) Create(owner string, paths []string, local string) (Claim, erro
 	if len(m.claims) >= m.max {
 		return Claim{}, &TooManyClaims{}
 	}
+	if m.maxPerOwner > 0 {
+		owned := 0
+		for _, claim := range m.claims {
+			if claim.Owner == owner {
+				owned++
+			}
+		}
+		if owned >= m.maxPerOwner {
+			return Claim{}, &TooManyOwnerClaims{}
+		}
+	}
 
 	random := make([]byte, 16)
 	if _, err := rand.Read(random); err != nil {
@@ -131,6 +173,10 @@ func (m *Memory) Create(owner string, paths []string, local string) (Claim, erro
 		Paths:   append([]string(nil), paths...),
 		Local:   local,
 		Started: now,
+	}
+	if m.maxClaimDuration > 0 {
+		expiresAt := now.Add(m.maxClaimDuration)
+		claim.ExpiresAt = &expiresAt
 	}
 	m.claims[claim.ID] = claim
 	m.log.Info("tunnel audit", "event", "connect", "who", owner, "when", now, "paths", paths, "claim_id", claim.ID)
@@ -165,7 +211,25 @@ func (m *Memory) List() []Claim {
 	return out
 }
 
+func (m *Memory) ListOwner(owner string) []Claim {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	out := make([]Claim, 0)
+	for _, claim := range m.claims {
+		if claim.Owner == owner {
+			out = append(out, clone(claim))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
 func clone(claim Claim) Claim {
 	claim.Paths = append([]string(nil), claim.Paths...)
+	if claim.ExpiresAt != nil {
+		expiresAt := *claim.ExpiresAt
+		claim.ExpiresAt = &expiresAt
+	}
 	return claim
 }

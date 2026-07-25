@@ -16,24 +16,38 @@ import (
 
 func TestTunnelAuthenticationModes(t *testing.T) {
 	request := httptest.NewRequest("GET", "/tunnel", nil)
-	principal, ok := authenticate(nil, request)
+	principal, ok := authenticate(nil, false, request)
 	if !ok || principal.Owner != "anonymous" {
 		t.Fatalf("anonymous principal = %#v, %v", principal, ok)
 	}
 
 	tokens := map[string]Token{"secret": {Owner: "alice"}}
-	if _, ok := authenticate(tokens, request); ok {
+	if _, ok := authenticate(tokens, false, request); ok {
 		t.Fatal("authenticated mode accepted a missing token")
 	}
 	request.Header.Set("Authorization", "Bearer secret")
-	principal, ok = authenticate(tokens, request)
+	principal, ok = authenticate(tokens, false, request)
 	if !ok || principal.Owner != "alice" {
 		t.Fatalf("token principal = %#v, %v", principal, ok)
+	}
+
+	request.Header.Set("Authorization", "Bearer generated-client-secret")
+	first, ok := authenticate(nil, true, request)
+	if !ok || first.Owner == "" || first.Owner == "anonymous" {
+		t.Fatalf("dynamic principal = %#v, %v", first, ok)
+	}
+	second, ok := authenticate(nil, true, request)
+	if !ok || second.Owner != first.Owner {
+		t.Fatalf("dynamic principal changed: %#v != %#v", first, second)
+	}
+	request.Header.Del("Authorization")
+	if _, ok := authenticate(nil, true, request); ok {
+		t.Fatal("dynamic identity accepted a missing bearer secret")
 	}
 }
 
 func TestIncompleteTunnelHandshakeReleasesClaim(t *testing.T) {
-	store := registry.NewMemory(64, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	store := registry.NewMemory(registry.Options{MaxClaims: 64}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	tunnel := NewTunnel(store, nil)
 	tunnel.setup = 50 * time.Millisecond
 	origin := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

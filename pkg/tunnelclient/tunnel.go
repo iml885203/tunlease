@@ -24,9 +24,11 @@ const (
 	headerPaths    = "X-Tunlease-Paths"
 	headerReplaces = "X-Tunlease-Replaces"
 	headerStarted  = "X-Tunlease-Started"
+	headerExpires  = "X-Tunlease-Expires"
 	streamRequest  = byte(1)
 	streamRelease  = byte(2)
 	streamAck      = byte(3)
+	streamExpire   = byte(4)
 )
 
 var setupTimeout = 10 * time.Second
@@ -186,6 +188,14 @@ func dialTunnel(
 		Paths:     append([]string(nil), paths...),
 		StartedAt: started,
 	}
+	if value := response.Header.Get(headerExpires); value != "" {
+		expiresAt, parseErr := time.Parse(time.RFC3339Nano, value)
+		if parseErr != nil {
+			_ = ws.Close(websocket.StatusProtocolError, "invalid tunnel metadata")
+			return nil, Claim{}, errors.New("gateway returned invalid tunnel expiration")
+		}
+		claim.ExpiresAt = &expiresAt
+	}
 	if claim.ID == "" || claim.Owner == "" {
 		_ = ws.Close(websocket.StatusProtocolError, "missing tunnel metadata")
 		return nil, Claim{}, errors.New("gateway returned incomplete tunnel metadata")
@@ -274,6 +284,17 @@ func acceptStreams(session *yamux.Session, to int, terminal chan<- error, events
 					Status: http.StatusGone,
 					Code:   "claim_released",
 					Detail: "the tunnel was explicitly released",
+				}
+			}
+			_ = stream.Close()
+			_ = session.Close()
+			return
+		case streamExpire:
+			if _, err = stream.Write([]byte{streamAck}); err == nil {
+				terminal <- &APIError{
+					Status: http.StatusGone,
+					Code:   "claim_expired",
+					Detail: "the claim reached its maximum duration",
 				}
 			}
 			_ = stream.Close()

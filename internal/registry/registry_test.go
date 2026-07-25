@@ -6,10 +6,43 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 )
 
 func testMemory(max int, allowed []string) *Memory {
-	return NewMemory(max, allowed, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return NewMemory(Options{MaxClaims: max, Allowed: allowed}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+}
+
+func TestPerOwnerLimitDurationAndMinimumPathSegments(t *testing.T) {
+	store := NewMemory(Options{
+		MaxClaims:            4,
+		MaxClaimsPerOwner:    1,
+		MinClaimPathSegments: 2,
+		MaxClaimDuration:     time.Minute,
+		Allowed:              []string{"/demo/"},
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	var notAllowed *NotAllowed
+	if _, err := store.Create("alice", []string{"/demo/*"}, ""); !errors.As(err, &notAllowed) {
+		t.Fatalf("shallow path error = %v", err)
+	}
+	claim, err := store.Create("alice", []string{"/demo/testing/*"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claim.ExpiresAt == nil || claim.ExpiresAt.Sub(claim.Started) != time.Minute {
+		t.Fatalf("claim expiration = %#v", claim.ExpiresAt)
+	}
+	var tooMany *TooManyOwnerClaims
+	if _, err = store.Create("alice", []string{"/demo/other/*"}, ""); !errors.As(err, &tooMany) {
+		t.Fatalf("per-owner limit error = %v", err)
+	}
+	if _, err = store.Create("bob", []string{"/demo/other/*"}, ""); err != nil {
+		t.Fatalf("second owner rejected: %v", err)
+	}
+	if got := store.ListOwner("alice"); len(got) != 1 || got[0].ID != claim.ID {
+		t.Fatalf("owner claims = %#v", got)
+	}
 }
 
 func TestClaimLifecycle(t *testing.T) {

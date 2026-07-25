@@ -38,6 +38,9 @@ return session.Err()
 條 path，每條最多 512 bytes。Session 持有兩者，直到 `Close` 或 context
 cancellation。重連會取得新 claim ID，
 可由 `session.Claim()` 讀取。
+Gateway 限制 claim duration 時，`session.Claim().ExpiresAt` 會包含 deadline；
+terminal expiry handshake 後，`session.Err()` 會回傳 code 為
+`claim_expired` 的 API error。
 Dispatch 後若無法連到 local port，gateway 會回
 `502 claimed tunnel target unavailable`，session 也會送出 best-effort
 `EventLocalTargetError`；claim 會保持 connected。
@@ -45,11 +48,13 @@ Dispatch 後若無法連到 local port，gateway 會回
 `Config` 支援 `Gateway`、`Token`、`DefaultScheme`、`Insecure` 與 custom
 `HTTPClient`。Gateway 必須是無 path 的 host 或 URL；package 會加入固定
 `/_tunlease`。`Insecure` 停用外層 TLS verification；設定 custom client 時忽略。
+Go package 不像 CLI 會保存 automatic identity；連到啟用 dynamic client
+identity 的 gateway 時，請提供穩定的隨機 `Token`。
 
 使用 `List` 查看 active session，`Release` 依 ID 終止。Current process
 擁有的 session 應優先呼叫 `Session.Close`。Gateway error 可轉成
 `*tunnelclient.APIError`，例如 `path_claimed`、`path_not_allowed` 與
-`claim_limit_reached`。
+`claim_limit_reached`、`owner_claim_limit_reached` 與 `claim_expired`。
 
 Integration test 應啟動 local HTTP server、建立 session、呼叫固定 public URL、
 驗證 local response、關閉 session，再驗證同一 request 回到 origin。

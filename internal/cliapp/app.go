@@ -66,7 +66,17 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 		if v := os.Getenv("TUNLEASE_DEFAULT_SCHEME"); v != "" {
 			scheme = v
 		}
-		return tunnelclient.New(tunnelclient.Config{Gateway: c.Gateway, Token: c.Token, Insecure: insec, DefaultScheme: scheme})
+		clientConfig := tunnelclient.Config{Gateway: c.Gateway, Token: c.Token, Insecure: insec, DefaultScheme: scheme}
+		client, err := tunnelclient.New(clientConfig)
+		if err != nil || c.Token != "" {
+			return client, err
+		}
+		identity, err := clientIdentityFor(client.Gateway())
+		if err != nil {
+			return nil, err
+		}
+		clientConfig.Token = identity
+		return tunnelclient.New(clientConfig)
 	}
 
 	var to int
@@ -180,7 +190,11 @@ func runClaim(c *tunnelclient.Client, paths []string, to int, daemon bool) error
 	saveState(st)
 	defer cleanupSessionState(c.Gateway(), to, cl.Paths)
 
-	fmt.Printf("claimed %s (claim %s)\n", strings.Join(cl.Paths, " "), shortID(cl.ID))
+	if cl.ExpiresAt != nil {
+		fmt.Printf("claimed %s until %s (claim %s)\n", strings.Join(cl.Paths, " "), cl.ExpiresAt.Local().Format("15:04:05"), shortID(cl.ID))
+	} else {
+		fmt.Printf("claimed %s (claim %s)\n", strings.Join(cl.Paths, " "), shortID(cl.ID))
+	}
 	fmt.Printf("WARNING: real 3rd-party traffic for these paths now flows to localhost:%d\n", to)
 	fmt.Println("tunnel connected  (Ctrl+C to release)")
 	for {
@@ -245,11 +259,19 @@ func runList(ctx context.Context, c *tunnelclient.Client, all bool) error {
 		}
 		target := "owner=" + x.Owner
 		suffix := ""
+		status := "connected"
+		if x.ExpiresAt != nil {
+			remaining := time.Until(*x.ExpiresAt).Round(time.Second)
+			if remaining < 0 {
+				remaining = 0
+			}
+			status = "expires in " + remaining.String()
+		}
 		if own {
 			target = fmt.Sprintf("→ localhost:%d", s.To)
 			suffix = "  (you)"
 		}
-		fmt.Printf("%-40s %-24s connected %s%s\n", strings.Join(x.Paths, ","), target, x.StartedAt.Local().Format("15:04:05"), suffix)
+		fmt.Printf("%-40s %-24s %-16s %s%s\n", strings.Join(x.Paths, ","), target, status, x.StartedAt.Local().Format("15:04:05"), suffix)
 		shown++
 	}
 	if shown == 0 {

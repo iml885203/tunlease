@@ -65,7 +65,10 @@ tunle release --to 8080
 `-d` is shorthand for `--detach`; it starts a background process. Always use
 `release` in automation cleanup. Treat command exit status as the interface;
 human-readable output is not a stable serialization format. Local metadata in
-`~/.tunlease/state.json` contains no token.
+`~/.tunlease/state.json` includes random per-gateway client identities used by
+gateways that enable dynamic identity. Keep the file private; these values let
+another process list or release that identity's claims but do not grant cloud
+or account access.
 
 Claim the narrowest path, never `/`, and assume callbacks contain real staging
 credentials and personal data. Make local handlers idempotent: provider retries
@@ -76,6 +79,10 @@ or a tunnel failure after dispatch can duplicate delivery.
 - **`path_claimed`** — another connected session owns an overlapping prefix.
 - **`path_not_allowed`** — ask for an allowlisted prefix.
 - **`claim_limit_reached`** — the gateway reached `max_claims`.
+- **`owner_claim_limit_reached`** — this client identity reached
+  `max_claims_per_owner`.
+- **`claim_expired`** — the gateway's `max_claim_duration` ended the session
+  and released its paths.
 - **Origin receives the request** — confirm the claim process is connected,
   the path matches, and the local port accepts HTTP.
 - **`502 claimed tunnel target unavailable`** — the path is claimed, but the

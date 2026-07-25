@@ -31,3 +31,22 @@ func TestRemoveSessionRemovesReclaimedIDs(t *testing.T) {
 		t.Fatalf("claims = %#v", s.Claims)
 	}
 }
+
+func TestClientIdentityIsStablePerGateway(t *testing.T) {
+	t.Setenv("TUNLEASE_STATE_FILE", t.TempDir()+"/state.json")
+	first, err := clientIdentityFor("https://one.example/_tunlease")
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := clientIdentityFor("https://one.example/_tunlease")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := clientIdentityFor("https://two.example/_tunlease")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == "" || first != again || first == other {
+		t.Fatalf("identities: first=%q again=%q other=%q", first, again, other)
+	}
+}

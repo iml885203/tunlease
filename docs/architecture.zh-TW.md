@@ -10,8 +10,9 @@ Tunlease 只有四個核心概念：
 - **Tunnel session**：開發者的一條 WSS 長連線。
 - **Claimed paths**：該連線互斥擁有的 path prefix。
 
-沒有獨立 lease。WebSocket 本身就是 claim：handshake 成功便擁有 paths，
-連線結束便釋放。
+WebSocket 本身就是 claim：handshake 成功便擁有 paths，連線結束便釋放。
+Operator 也可設定最長 claim duration；這只是 live session 的時間上限，不是
+durable lease。
 
 ## Topology 與 URL
 
@@ -41,6 +42,10 @@ timeout 的 ready/ack；未完成的連線會釋放 paths。`Start` 只會在 da
 網路斷線會移除 server record。Client 以舊 claim ID 作為 replacement context
 重試，成功後取得新 ID；空窗期間流量送 origin。明確 release 是 terminal，
 不可自動重連；gateway 會送 release control frame，只有 client ACK 後才回成功。
+
+設定 `max_claim_duration` 時，handshake 會包含 `expires_at`。期限到達後，
+gateway 送出 terminal expiry control frame、等待 client ACK、關閉 session，
+並釋放 paths。
 
 剩餘 HTTP API：
 

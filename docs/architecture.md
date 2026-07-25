@@ -10,8 +10,9 @@ Tunlease has four concepts:
 - **Tunnel session** — one live WSS connection from a developer.
 - **Claimed paths** — prefixes exclusively owned by that connection.
 
-There is no independent lease. The WebSocket is the claim: a successful
-handshake owns the paths and closing the connection releases them.
+The WebSocket is the claim: a successful handshake owns the paths and closing
+the connection releases them. Operators may additionally configure a maximum
+claim duration; this is a bound on that live session, not a durable lease.
 
 ## Topology and URL map
 
@@ -45,6 +46,10 @@ claim ID as replacement context; a successful reconnect receives a new ID.
 Traffic goes to the origin during the gap. An explicit release is terminal and
 must not reconnect: the gateway sends a release control frame and returns
 success only after the client acknowledges it.
+
+When `max_claim_duration` is configured, the handshake includes `expires_at`.
+At that deadline the gateway sends a terminal expiry control frame, waits for
+the client acknowledgement, closes the session, and releases the paths.
 
 The remaining HTTP API is:
 

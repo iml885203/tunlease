@@ -26,9 +26,13 @@ type testGateway struct {
 }
 
 func newTestGateway(t *testing.T, allowed []string) *testGateway {
+	return newTestGatewayOptions(t, registry.Options{MaxClaims: 64, Allowed: allowed})
+}
+
+func newTestGatewayOptions(t *testing.T, options registry.Options) *testGateway {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	store := registry.NewMemory(64, allowed, logger)
+	store := registry.NewMemory(options, logger)
 	tunnel := gatewayd.NewTunnel(store, nil)
 	origin := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "origin: %s", r.URL.Path)
@@ -38,6 +42,37 @@ func newTestGateway(t *testing.T, allowed []string) *testGateway {
 	}).Handler())
 	t.Cleanup(server.Close)
 	return &testGateway{http: server, store: store, tunnel: tunnel}
+}
+
+func TestClaimExpiresAtGatewayLimit(t *testing.T) {
+	gateway := newTestGatewayOptions(t, registry.Options{
+		MaxClaims:        64,
+		MaxClaimDuration: 150 * time.Millisecond,
+		Allowed:          []string{"/test/"},
+	})
+	client, err := tunnelclient.New(tunnelclient.Config{
+		Gateway: gateway.http.URL, HTTPClient: gateway.http.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.Start(context.Background(), []string{"/test/expiring/*"}, 8080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.Claim().ExpiresAt == nil {
+		t.Fatal("claim did not include its expiration")
+	}
+	select {
+	case <-session.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("claim did not expire")
+	}
+	var apiErr *tunnelclient.APIError
+	if !errors.As(session.Err(), &apiErr) || apiErr.Code != "claim_expired" {
+		t.Fatalf("session error = %v", session.Err())
+	}
+	eventually(t, func() bool { return len(gateway.store.List()) == 0 }, "expired claim release")
 }
 
 func TestSessionDataPathFallbackAndClose(t *testing.T) {

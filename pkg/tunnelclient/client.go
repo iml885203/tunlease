@@ -44,10 +44,11 @@ type Client struct {
 
 // Claim describes one active tunnel and its exclusively owned paths.
 type Claim struct {
-	ID        string    `json:"claim_id"`
-	Owner     string    `json:"owner"`
-	Paths     []string  `json:"paths"`
-	StartedAt time.Time `json:"started_at"`
+	ID        string     `json:"claim_id"`
+	Owner     string     `json:"owner"`
+	Paths     []string   `json:"paths"`
+	StartedAt time.Time  `json:"started_at"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
 // APIError is a structured error returned by the gateway.

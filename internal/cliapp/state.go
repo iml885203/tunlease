@@ -1,7 +1,10 @@
 package cliapp
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -19,7 +22,8 @@ type stateClaim struct {
 	PID int `json:"pid,omitempty"`
 }
 type state struct {
-	Claims []stateClaim `json:"claims"`
+	Claims           []stateClaim      `json:"claims"`
+	ClientIdentities map[string]string `json:"client_identities,omitempty"`
 }
 
 func statePath() string {
@@ -60,6 +64,30 @@ func saveState(s state) {
 func (s *state) add(c stateClaim) {
 	s.removeByID(c.ClaimID)
 	s.Claims = append(s.Claims, c)
+}
+
+func clientIdentityFor(gateway string) (string, error) {
+	s := loadState()
+	if identity := s.ClientIdentities[gateway]; identity != "" {
+		return identity, nil
+	}
+	random := make([]byte, 32)
+	if _, err := rand.Read(random); err != nil {
+		return "", err
+	}
+	if statePath() == "" {
+		return "", errors.New("cannot determine the Tunlease state path")
+	}
+	if s.ClientIdentities == nil {
+		s.ClientIdentities = map[string]string{}
+	}
+	identity := hex.EncodeToString(random)
+	s.ClientIdentities[gateway] = identity
+	saveState(s)
+	if loadState().ClientIdentities[gateway] != identity {
+		return "", errors.New("could not persist the automatic client identity")
+	}
+	return identity, nil
 }
 
 func (s *state) removeByID(id string) {
