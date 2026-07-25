@@ -100,9 +100,11 @@ Package 不會讀取 `~/.tunlease.yaml`、environment variables 或 CLI state。
 |---|---|
 | `Gateway` | Gateway host 或 URL。scheme 可省略（見 `DefaultScheme`）；若沒有 path，會自動補上控制面前綴 `/_tunlease`。 |
 | `Token` | Bearer token；gateway 未設 token 時留空。 |
-| `Insecure` | 跳過 gateway 外層 TLS 憑證驗證（自簽／內網 gateway）。tunnel 的 inner TLS 仍以 fingerprint pin 住。設了 `HTTPClient` 時此欄被忽略。 |
+| `Insecure` | 跳過 outer TLS server authentication。Inner TLS 仍 pin fingerprint，但 fingerprint 經由 outer connection 取得，無法抵擋完整 MITM。只在可信網路使用；設定 `HTTPClient` 時忽略。 |
 | `DefaultScheme` | `Gateway` 沒帶 scheme 時的預設。預設 `https`；沒有 TLS 的 gateway 設 `http`。 |
 | `HTTPClient` | 自訂 HTTP transport。設了之後 `Insecure` 會被忽略——TLS 請自行在 client 上設定。 |
+
+應優先提供信任 internal CA 的自訂 `HTTPClient`，不要使用 `Insecure`。
 
 ## 列出與釋放 claim
 

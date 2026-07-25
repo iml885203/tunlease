@@ -13,7 +13,7 @@ tunle claim /webhooks/stripe/* --to 8080 --gateway staging.myapp.com
 
 跟 ngrok/localtunnel/bore 不同，它**不會**給你一個新 URL。[與其他工具的比較](#與其他工具的比較)。
 
-[開發者快速上手](#開發者快速上手) · [平台部署](docs/platform-deployment.zh-TW.md) · [架構](docs/architecture.zh-TW.md) · [疑難排解](docs/developer-guide.zh-TW.md#疑難排解)
+[核心概念與 URL 對照](docs/concepts.zh-TW.md) · [任務索引](docs/tasks.zh-TW.md) · [開發者快速上手](#開發者快速上手) · [平台部署](docs/platform-deployment.zh-TW.md) · [疑難排解](docs/developer-guide.zh-TW.md#疑難排解)
 
 [English](README.md) · [繁體中文](README.zh-TW.md)
 
@@ -23,18 +23,31 @@ tunle claim /webhooks/stripe/* --to 8080 --gateway staging.myapp.com
 flowchart LR
     TP["第三方<br/>(例如 Stripe)"] -->|"呼叫固定 URL"| GW[tunlease gateway]
 
-    GW -->|"已認領的 path"| CLI[tunle CLI]
-    GW -->|"其他所有 path<br/>(fail-open)"| App[原始 app]
-    CLI -->|"反向 tunnel"| Local[你的本機服務]
+    subgraph Shared["共用環境"]
+        GW[tunlease gateway]
+        App[原始 app]
+        GW -->|"其他所有 path<br/>(fail-open)"| App
+    end
+
+    subgraph Developer["開發者電腦"]
+        CLI[tunle CLI]
+        Local[你的本機服務]
+        CLI -->|"反向 tunnel"| Local
+    end
+
+    GW -->|"已認領的 path"| CLI
 
     classDef tunlease fill:#dbeafe,stroke:#2563eb,color:#1e3a8a,stroke-width:2px;
     class GW,CLI tunlease;
 ```
 
-Gateway 坐在固定 URL 上，依 path 分流：**已認領**的 path 走 tunnel 到你的電腦；
-**其他所有** path 則 fail-open 到真正的 app。藍色節點是 Tunlease 的；其餘本來就存在。
+Gateway 接收固定 host 的流量並依 path 分流：**已認領**且 tunnel 已連線的 path
+到達你的電腦；其他 path proxy 到設定的原 app。藍色節點是 Tunlease 的；其餘本來就存在。
 
-安全模型包含 path allowlist、互斥且有 TTL 的租約、可選的 token 認證、audit log，以及 fail-open routing。開發工具失效時，流量會回到原始應用程式，不影響既有 endpoint 的可用性。
+安全模型包含 path allowlist、互斥且有 TTL 的租約、可選 token 認證、audit log 與
+fail-open routing。Fail-open 涵蓋 gateway 健康時未符合的 path 與無法使用的 developer
+tunnel；gateway 本身的 availability 仍需一般平台 HA 或 bypass 規劃。詳見
+[routing 與失敗契約](docs/concepts.zh-TW.md#routing-與失敗契約)。
 
 ## 與其他工具的比較
 
@@ -51,24 +64,23 @@ Gateway 坐在固定 URL 上，依 path 分流：**已認領**的 path 走 tunne
 | Fail-open 回真正的 app | ✅ | ❌ | ❌ | ❌ |
 | 互斥租約、多開發者共用一個 URL | ✅ | ❌ | ❌ | ❌ |
 | 可自架 | ✅ | ❌ | ✅ | ✅ |
-| 零 server 設定即可用 | ❌ | ✅ | ✅ | ✅ |
-
-Tunlease 需要先在固定 endpoint 前面放一個 gateway（這是保留既有 URL 的代價）；
-ngrok/localtunnel/bore 只需要它們自己的 relay，不用額外部署。
 
 ## 開發者快速上手
 
-平台團隊部署好 gateway、你也拿到它的 URL 之後，開發者只需要兩個命令：安裝、再
-claim。若 gateway 還沒架好，請先看[平台部署指南](docs/platform-deployment.zh-TW.md)。
+平台團隊把既有 callback host 導入 gateway，並提供 URL、允許的 prefix 與可選 token
+後，安裝 CLI 再 claim。若 gateway 還沒架好，請先看
+[平台部署指南](docs/platform-deployment.zh-TW.md)。
 
 ```bash
 # macOS 與 Linux
-curl -fsSL https://tunlease.example.com/install/install.sh | bash
+# 請把 YOUR_TUNLEASE_HOST 換成團隊發布 installer 的 host。
+curl -fsSL https://YOUR_TUNLEASE_HOST/install/install.sh | bash
 ```
 
 ```powershell
 # Windows PowerShell（amd64）
-irm https://tunlease.example.com/install/install.ps1 | iex
+# 請把 YOUR_TUNLEASE_HOST 換成團隊發布 installer 的 host。
+irm https://YOUR_TUNLEASE_HOST/install/install.ps1 | iex
 ```
 
 接著用一行命令認領 path——用 `--gateway` 指向 gateway（就填平台團隊給你的網域），
@@ -80,8 +92,9 @@ client 自動附加，所以不用自己在網址裡加 `/_tunlease`。
 tunle claim /webhooks/provider/callback/* --to 8080 --gateway myapp.example.com
 ```
 
-Claim 之後真正的 staging 第三方 callback 會進到你的本機，所以請先啟動本機服務、
-並認領最小範圍的 path。
+Claim 會收到真實 staging callback，包含其中的資料與 credential。請先啟動本機服務、
+只 claim 所需的最窄 path，並確保 callback handler idempotent：provider retry
+與 request 中途 tunnel failure 都可能造成重複 delivery。
 
 若不想每次重打 `--gateway`，設成環境變數一次即可：
 
@@ -158,6 +171,7 @@ make e2e        # Redis + gateway + app + 真實 CLI
 
 ## 依角色閱讀
 
+- **任何需要理解模型的人：**[核心概念與 URL 對照](docs/concepts.zh-TW.md)——canonical topology、詞彙、routing/failure matrix、HTTP trust boundary 與部署限制（[English](docs/concepts.md)）
 - **第一次導入 Tunlease 的團隊：**[導入指南](docs/adoption-guide.zh-TW.md)——從適用情境、image、部署、開發者 claim 到完整流程驗證（[English](docs/adoption-guide.md)）
 - **要接第三方 callback 的開發者：**[開發者指南](docs/developer-guide.zh-TW.md)——安裝、設定、CLI 與疑難排解（[English](docs/developer-guide.md)）
 - **要自架 gateway 的平台團隊：**[平台部署指南 → 安裝 Gateway](docs/platform-deployment.zh-TW.md#安裝-gateway)——自架前提（image、Ingress、DNS/TLS）、Helm 安裝與安全（[English](docs/platform-deployment.md#install-the-gateway)）
@@ -169,7 +183,10 @@ make e2e        # Redis + gateway + app + 真實 CLI
 
 v0.1 產品 baseline 已完成。Gateway、CLI 與可重用 Go client 皆可運作：public endpoint → localhost tunnel、fail-open、in-memory 與可選的 Redis registry、安裝與自動更新，以及跨平台（Linux/macOS/Windows）binary 都已具備。
 
-單一 gateway replica 搭配 memory registry 是一種有效的部署方式。Gateway 重啟時，claim 會短暫消失，流量先 fail-open 回原始 app；CLI 接著自動重新 claim 並建立 tunnel。只有在真的需要持久租約或多 replica 時，才需要啟用 Redis。
+單一 gateway replica 搭配 memory registry 是目前支援的 data-plane 部署。
+Gateway 重啟會清掉 lease；gateway 恢復可連線後，CLI 會重新 claim 並重建 tunnel。
+Redis 可保留 lease record，但 tunnel session 仍在單一 process，因此只有 Redis
+並不能安全支援多 gateway replica。
 
 ## 參與貢獻
 

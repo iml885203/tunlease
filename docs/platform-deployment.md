@@ -4,7 +4,8 @@
 
 Deploy the `tunlease-gateway` in front of the app that owns the third party's fixed endpoint: Ingress routes the fixed endpoint to the gateway, and the gateway's `fail_open_url` points at the app's Service. The public URL does not change. The gateway serves its control plane under `control_prefix` and demuxes every other path itself — tunnelling claimed paths to the developer and failing open to the app for everything else.
 
-See [Architecture](architecture.md) for the complete control plane, data plane, request routing, and Pod-replacement flow.
+Start with [Tunlease concepts](concepts.md) for the canonical URL map and
+failure boundary. See [Architecture](architecture.md) for implementation details.
 
 ```mermaid
 flowchart LR
@@ -20,11 +21,18 @@ Blue nodes are deployed from this repository. Neutral nodes belong to the existi
 
 ## Decide before deploying
 
-- Choose an internal or staging Ingress host and path, for example `tunlease.example.com`.
+- Identify the existing staging callback host, for example
+  `callbacks.staging.example.com`. The gateway must receive `/` on this host,
+  not only a separate `/tunlease` mount.
+- Ensure the original app has a separately reachable internal origin for
+  `fail_open_url`; it must not resolve back through the public gateway.
 - The path allowlist is optional: leave it empty to allow any path (convenient on a trusted network), or set the narrowest prefixes that cover your callbacks to stop anyone claiming sensitive paths like `/` or `/admin`.
 - Client tokens are optional. Configure one token per developer for gateways outside a trusted development network.
-- Keep the v1 gateway at one replica. The memory registry is the current default: on Pod replacement, the CLI creates a fresh lease and tunnel while the gateway fails open to the app. Use Redis only when persistent leases or multiple replicas are explicitly required.
+- Keep the v1 gateway at one replica. Tunnel sessions are process-local, so
+  Redis preserves lease records but does not make a multi-replica data plane
+  safe.
 - Ensure the Ingress supports WebSocket upgrades and read/send timeouts of at least 3600 seconds.
+- Reserve `control_prefix` (`/_tunlease` by default) on the public host.
 
 ## Same-domain deployment (default)
 
@@ -44,20 +52,23 @@ Two gateway config keys govern this:
 ```yaml
 config:
   # URL path prefix for the control plane. Defaults to /_tunlease when unset.
-  control_prefix: /_tunlease
+  controlPrefix: /_tunlease
   # Where unclaimed third-party traffic falls open to (the original app).
   # If unset, unmatched paths return 404 instead.
-  fail_open_url: http://myapp-origin.default.svc
+  failOpenURL: http://myapp-origin.default.svc
 ```
+
+These are Helm values. The rendered gateway YAML uses `control_prefix` and
+`fail_open_url`; [the values table](../charts/tunlease/values.yaml) is the
+authoritative chart interface.
 
 The control plane lives under this prefix on the gateway, but developers do not
 put it in their gateway URL — the client appends the control-plane prefix
 automatically and defaults the scheme to `https`. Hand out the bare host,
 `myapp.example.com`.
 
-Host-based splitting across different domains (serving the control plane on a
-separate subdomain from the app) is planned but not fully implemented; document
-same-domain for now.
+Mounting the control plane on a separate host or mounting only the gateway under
+`/tunlease` is not the current supported topology.
 
 ## Self-hosting prerequisites
 
@@ -100,18 +111,16 @@ flowchart TD
   Then set `image.repository`/`image.tag` in your values and add an
   `imagePullSecret` for your registry.
 
-- **Ingress controller.** The chart hardcodes `ingressClassName: nginx` and
-  `nginx.ingress.kubernetes.io/*` annotations, including
-  `rewrite-target: /$2`, whose capture-group behaviour is specific to
-  ingress-nginx. On any other controller (Traefik, AWS ALB, ...) you must
-  replace `ingress.className` and every annotation with that controller's
-  equivalent for path rewrite and WebSocket timeouts.
+- **Ingress controller.** The chart defaults to `ingressClassName: nginx` and
+  nginx WebSocket timeout annotations. On another controller (Traefik, AWS
+  ALB, ...), replace `ingress.className` and annotations with that controller's
+  timeout equivalents. Route the whole host at path `/` without rewriting the
+  callback path.
 
-- **DNS and TLS.** Nothing provisions the host for you. Point your chosen host
-  (the chart default is `tunlease.example.com`) at your Ingress, and issue a
-  certificate for it. The quick-start examples below use `http://` for brevity,
-  but the tunnel handshake is `wss://`; a production gateway must terminate TLS
-  on that host.
+- **DNS and TLS.** Nothing provisions the host for you. Point the existing
+  callback host (the chart placeholder is `callbacks.staging.example.com`) at
+  the Ingress and issue a certificate for it. The tunnel handshake is `wss://`;
+  a production gateway must terminate trusted TLS on that host.
 
 ### CI deploy example
 
@@ -149,12 +158,22 @@ context.
 
 The chart defaults to `auth.tokens: []`, which disables client authentication. This is convenient on a trusted development network, but every reachable client then shares the `anonymous` owner and can list or release any claim.
 
+With tokens enabled, every authenticated user can list all claims and see owner,
+paths, and expiry; only the claim owner can heartbeat or release it. The current
+gateway config has no delegated admin/rotation API: issue, rotate, and revoke
+tokens through the secret-management and gateway rollout process.
+
 For an authenticated deployment, never commit real tokens to values. Use a controlled private values file or CI secrets:
 
 ```yaml
 # values.private.yaml — do not commit
 image:
+  repository: YOUR_REGISTRY/tunlease-gateway
   tag: IMAGE_VERSION
+ingress:
+  # The existing host already stored by the provider.
+  host: callbacks.staging.example.com
+  path: /
 config:
   registry: redis
   redisURL: redis://redis.example:6379/0
@@ -176,49 +195,97 @@ helm upgrade --install tunlease charts/tunlease \
 kubectl -n tunlease rollout status deployment/tunlease
 ```
 
-The chart defaults to the `/tunlease` Ingress path and rewrites it to the gateway root. Under that root the control plane lives at `control_prefix` (default `/_tunlease`): the claim API at `/_tunlease/api/v1/*`, the tunnel WebSocket at `/_tunlease/tunnel`, and health at `/_tunlease/healthz`. Every other path is third-party traffic. Do not strip WebSocket upgrade headers.
+The chart routes path `/` on the existing callback host to the gateway without
+rewriting it. The control plane lives at `control_prefix` (default
+`/_tunlease`): the claim API at `/_tunlease/api/v1/*`, tunnel WebSocket at
+`/_tunlease/tunnel`, and health at `/_tunlease/healthz`. Every other path is
+third-party traffic. Do not strip WebSocket upgrade headers.
 
-Claim state lives in a single gateway process (or a shared Redis registry), and third-party traffic is demultiplexed by path over the established tunnels, so v1 must keep `replicaCount: 1` when using the in-memory registry.
+Keep `replicaCount: 1` with either registry. Redis shares leases but established
+tunnels remain process-local; a callback routed to another replica cannot use
+that tunnel.
 
 ## Front the app with the gateway
 
 The gateway itself plays the "sits in front of the app" role — there is no separate process to add to the workload. Deploy it so the fixed endpoint's traffic flows Ingress → gateway → (tunnel | fail-open to app):
 
 1. Route the fixed endpoint's Ingress at the gateway instead of the app directly.
+   Remove or update any competing host+`/` route; two Ingress objects claiming
+   the same route have controller-specific, unsafe precedence.
 2. Set the gateway's `fail_open_url` (chart key `config.failOpenURL`) to the app's Service, such as `http://myapp-origin.default.svc`.
 3. Leave the control plane under `control_prefix` (default `/_tunlease`); the app must not own that path prefix.
 4. Do not change the public host or the endpoint stored by the third party.
 
-With `fail_open_url` set, any unclaimed path — and any request whose tunnel does not respond — is proxied to the app; a claimed path is tunnelled to the developer.
+With `fail_open_url` set, an unclaimed path or a matching lease without a
+connected tunnel is proxied to the app. Once dispatch through a tunnel begins,
+a later tunnel/local failure may return an error rather than replaying the
+request to the app.
 
 After rollout, confirm the gateway Pod is Ready and test an unclaimed path to ensure it still reaches the app.
 
 ## Failure semantics
 
-- A path with no matching claim is proxied to `fail_open_url` (or returns 404 when it is unset).
-- A request whose path matches no active claim, or whose developer tunnel is not connected, falls back to the app.
-- Gateway or CLI failure must affect only the development tunnel, never availability of the original service.
+- A path with no matching claim is proxied to `fail_open_url` (or returns 404
+  when it is unset).
+- A matching lease without a connected developer tunnel follows the same path.
+- A failure after tunnel dispatch starts may return an error. Automatic replay
+  could duplicate a callback already processed by localhost.
+- CLI disconnection is handled by reconnect and pre-dispatch fail-open.
+  Gateway, Service, Ingress, load-balancer, or origin outages require normal
+  platform HA/bypass handling and are outside gateway fail-open.
 
-With the in-memory registry, replacing the gateway Pod intentionally removes all claims. Active CLIs detect the missing lease on heartbeat, create a new claim, and rebuild their tunnels. During that interval the gateway fails open to the app. Redis would preserve lease records, but it would not preserve the tunnel session or Pod IP, so it does not eliminate tunnel reconnection by itself.
+With the in-memory registry, replacing the gateway Pod removes all claims and
+tunnels. Once the replacement is reachable, active CLIs detect the missing
+lease, create a new claim, and rebuild their tunnels. During the reconnect gap,
+a healthy replacement gateway proxies unmatched paths to the app. Redis
+preserves leases but not tunnel sessions or Pod identity.
 
 ## Verify the deployment
 
 ```bash
-# Gateway health
-curl -fsS http://GATEWAY_HOST/tunlease/_tunlease/healthz
+# Gateway process health (replace with the existing callback host)
+curl -fsS https://callbacks.staging.example.com/_tunlease/healthz
 
 # An unclaimed path falls open to the app.
-curl -fsS http://GATEWAY_HOST/webhooks/provider/example
+curl -fsS https://callbacks.staging.example.com/webhooks/provider/example
 
 kubectl -n tunlease get pods
 kubectl -n tunlease logs deployment/tunlease --since=10m
 ```
 
-For an end-to-end check: verify an unclaimed path reaches the app, run `tunle claim` and verify it reaches localhost, then press Ctrl+C and verify it returns to the app. Finally interrupt the tunnel or gateway and confirm requests still fail open.
+For an end-to-end check: verify an unclaimed path reaches the app, run `tunle
+claim` and verify it reaches localhost, then press Ctrl+C and verify it returns
+to the app. Interrupt only the developer tunnel to test fail-open. Test gateway
+outage separately against the platform's HA or bypass design.
 
 ## Observability
 
-The gateway writes JSON audit events for claim, release, and expiry with owner, path, claim ID, and time. Consider alerts for unusual growth in fail-open traffic and for repeated claim churn.
+The gateway writes JSON audit events for claim, release, and expiry with owner,
+path, claim ID, and time. It does not currently expose route metrics. Derive
+HTTP status, origin/tunnel routing, latency, and connection signals from
+Ingress/access logs or add external telemetry. Monitor active leases, reconnect
+churn, 502 responses, origin health, and an end-to-end synthetic callback.
+
+`/_tunlease/healthz` is process liveness only. It does not check Redis, the
+origin, an active tunnel, DNS, or external load-balancer reachability.
+
+## Security, privacy, and capacity
+
+- Use per-developer tokens outside a trusted network. Tokens authorize access;
+  edge rate limits, request/header/body limits, and connection quotas are still
+  required for an Internet-reachable gateway.
+- `--insecure` removes outer TLS server authentication. Because the tunnel
+  fingerprint is obtained through that outer connection, inner pinning does not
+  protect against a full man-in-the-middle. Prefer a trusted internal CA.
+- Real staging payloads reach developer laptops. Apply data-classification,
+  endpoint authorization, log-retention, and laptop-security policies.
+- Size upstream timeouts, file descriptors, memory, and bandwidth for concurrent
+  callbacks and slow local services. The current gateway does not define a
+  universal body-size or per-request deadline; enforce appropriate limits at
+  the edge and test provider retry behavior.
+- During Pod termination, drain long-lived WebSockets and expect clients to
+  reconnect. Record each load balancer's idle and maximum connection duration;
+  a 3600-second timeout is a baseline, not a portability guarantee.
 
 ## Roll back
 

@@ -13,7 +13,7 @@ tunle claim /webhooks/stripe/* --to 8080 --gateway staging.myapp.com
 
 Unlike ngrok/localtunnel/bore, it does **not** give you a new URL. [How it compares](#how-it-compares).
 
-[Developer quick start](#quick-start-for-developers) · [Platform setup](docs/platform-deployment.md) · [Architecture](docs/architecture.md) · [Troubleshooting](docs/developer-guide.md#troubleshooting)
+[Concepts and URL map](docs/concepts.md) · [Task index](docs/tasks.md) · [Developer quick start](#quick-start-for-developers) · [Platform setup](docs/platform-deployment.md) · [Troubleshooting](docs/developer-guide.md#troubleshooting)
 
 [English](README.md) · [繁體中文](README.zh-TW.md)
 
@@ -23,19 +23,34 @@ Unlike ngrok/localtunnel/bore, it does **not** give you a new URL. [How it compa
 flowchart LR
     TP["Third party<br/>(e.g. Stripe)"] -->|"calls the fixed URL"| GW[tunlease gateway]
 
-    GW -->|"claimed path"| CLI[tunle CLI]
-    GW -->|"every other path<br/>(fail-open)"| App[Original app]
-    CLI -->|"reverse tunnel"| Local[Your local service]
+    subgraph Shared["Shared environment"]
+        GW[tunlease gateway]
+        App[Original app]
+        GW -->|"every other path<br/>(fail-open)"| App
+    end
+
+    subgraph Developer["Developer machine"]
+        CLI[tunle CLI]
+        Local[Your local service]
+        CLI -->|"reverse tunnel"| Local
+    end
+
+    GW -->|"claimed path"| CLI
 
     classDef tunlease fill:#dbeafe,stroke:#2563eb,color:#1e3a8a,stroke-width:2px;
     class GW,CLI tunlease;
 ```
 
-The gateway sits on the fixed URL and forks by path: a **claimed** path is
-tunnelled to your laptop; **every other** path falls open to the real app. Blue
-nodes are Tunlease's; the rest already exist.
+The gateway receives the fixed host's traffic and forks by path: a **claimed**
+path with a connected tunnel reaches your laptop; every other path is proxied
+to the configured original app. Blue nodes are Tunlease's; the rest already
+exist.
 
-The safety model combines a path allowlist, exclusive leases with TTLs, optional token authentication, audit logs, and fail-open routing. If the development tooling fails, traffic returns to the original application.
+The safety model combines a path allowlist, exclusive leases with TTLs,
+optional token authentication, audit logs, and fail-open routing. Fail-open
+covers unmatched paths and unavailable developer tunnels while the gateway is
+healthy; gateway availability still requires normal platform HA or bypass
+planning. See the [routing and failure contract](docs/concepts.md#routing-and-failure-contract).
 
 ## How it compares
 
@@ -53,26 +68,24 @@ tools give you a **new** URL for a local port. Tunlease keeps a third party's
 | Fail open to the real app | ✅ | ❌ | ❌ | ❌ |
 | Exclusive lease, many developers, one URL | ✅ | ❌ | ❌ | ❌ |
 | Self-hostable | ✅ | ❌ | ✅ | ✅ |
-| Works with zero server setup | ❌ | ✅ | ✅ | ✅ |
-
-Tunlease needs a gateway in front of the fixed endpoint first (that is the
-trade-off for keeping the existing URL); ngrok/localtunnel/bore need nothing but
-their own relay.
 
 ## Quick start for developers
 
-Once your platform team has deployed the gateway (and you know its URL), a
-developer needs just two commands: install, then claim. If the gateway isn't
-set up yet, see the [platform deployment guide](docs/platform-deployment.md).
+Once your platform team has routed the existing callback host through a gateway
+and given you its URL, allowed prefix, and optional token, install the CLI and
+claim. If the gateway is not set up yet, see the
+[platform deployment guide](docs/platform-deployment.md).
 
 ```bash
 # macOS and Linux
-curl -fsSL https://tunlease.example.com/install/install.sh | bash
+# Replace YOUR_TUNLEASE_HOST with your team's published distribution host.
+curl -fsSL https://YOUR_TUNLEASE_HOST/install/install.sh | bash
 ```
 
 ```powershell
 # Windows PowerShell (amd64)
-irm https://tunlease.example.com/install/install.ps1 | iex
+# Replace YOUR_TUNLEASE_HOST with your team's published distribution host.
+irm https://YOUR_TUNLEASE_HOST/install/install.ps1 | iex
 ```
 
 Then claim a path in one command — point it at the gateway with `--gateway`
@@ -84,8 +97,10 @@ omit it; use an explicit `http://` for a gateway without TLS (e.g. localhost).
 tunle claim /webhooks/provider/callback/* --to 8080 --gateway myapp.example.com
 ```
 
-Claims receive real staging callbacks, so start your local service first and
-claim the narrowest path you need.
+Claims receive real staging callbacks, including their data and credentials.
+Start your local service first, claim the narrowest path you need, and make
+callback handling idempotent: provider retries and mid-request tunnel failures
+can produce duplicate delivery.
 
 To avoid repeating `--gateway`, set it once as an environment variable:
 
@@ -174,6 +189,7 @@ make e2e     # Redis + gateway + app + real CLI
 
 Choose the shortest path for your role:
 
+- **Anyone learning the model:** [Concepts and URL map](docs/concepts.md) — canonical topology, vocabulary, routing/failure matrix, HTTP trust boundary, and deployment limits ([繁中](docs/concepts.zh-TW.md))
 - **Team new to Tunlease:** [Adoption guide](docs/adoption-guide.md) — go from fit check to images, deployment, developer claims, and end-to-end verification ([繁中](docs/adoption-guide.zh-TW.md))
 - **Developer receiving callbacks:** [Developer guide](docs/developer-guide.md) — installation, configuration, CLI usage, and troubleshooting ([繁中](docs/developer-guide.zh-TW.md))
 - **Platform team self-hosting the gateway:** [Platform deployment guide → Install the gateway](docs/platform-deployment.md#install-the-gateway) — prerequisites (images, Ingress, DNS/TLS), Helm install, and security ([繁中](docs/platform-deployment.zh-TW.md#安裝-gateway))
@@ -185,7 +201,11 @@ Choose the shortest path for your role:
 
 The v0.1 product baseline is complete. The gateway, CLI, and reusable Go client are all functional: the public-endpoint-to-localhost tunnel, fail-open behavior, the in-memory and optional Redis registry, installation and self-update, and cross-platform (Linux/macOS/Windows) binaries are all in place.
 
-A single gateway replica with the in-memory registry is a valid deployment. A gateway restart drops leases and briefly returns claimed paths to the original app; the CLI then claims again and rebuilds the tunnel automatically. Redis is only needed when persistent leases or multiple gateway replicas provide a concrete benefit.
+A single gateway replica with the in-memory registry is the supported data-plane
+deployment. A gateway restart drops leases; after the gateway becomes reachable,
+the CLI claims again and rebuilds the tunnel. Redis can preserve lease records,
+but tunnel sessions are process-local, so Redis alone does not make multiple
+gateway replicas safe.
 
 ## Contributing
 

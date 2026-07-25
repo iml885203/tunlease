@@ -13,8 +13,8 @@ spec:
     - host: {{ .Values.ingress.host }}
       http:
         paths:
-          - path: {{ printf "%s(/|$)(.*)" .Values.ingress.path | quote }}
-            pathType: ImplementationSpecific
+          - path: {{ .Values.ingress.path | quote }}
+            pathType: Prefix
             backend:
               service:
                 name: {{ include "tunlease.fullname" . }}

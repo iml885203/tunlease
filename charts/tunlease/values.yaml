@@ -11,13 +11,13 @@ service:
 ingress:
   enabled: true
   className: nginx
-  host: tunlease.example.com
-  path: /tunlease
+  # Use the existing fixed callback host. The gateway must receive the whole
+  # host so it can route claimed paths and proxy every other path to failOpenURL.
+  host: callbacks.staging.example.com
+  path: /
   annotations:
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
-    nginx.ingress.kubernetes.io/use-regex: "true"
 
 config:
   listen: ":8300"

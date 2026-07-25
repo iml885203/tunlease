@@ -100,9 +100,11 @@ For an authenticated gateway, obtain the personal token through the application'
 |---|---|
 | `Gateway` | Gateway host or URL. Scheme is optional (see `DefaultScheme`); if it has no path, the control-plane prefix `/_tunlease` is appended automatically. |
 | `Token` | Bearer token; empty when the gateway has no tokens configured. |
-| `Insecure` | Skip verification of the gateway's outer TLS certificate (self-signed / internal gateway). The tunnel's inner TLS stays fingerprint-pinned. Ignored when `HTTPClient` is set. |
+| `Insecure` | Skip outer TLS server authentication. Inner TLS remains pinned, but its fingerprint is learned through that outer connection and cannot defeat a full MITM. Use only on trusted networks. Ignored when `HTTPClient` is set. |
 | `DefaultScheme` | Scheme used when `Gateway` has none. Defaults to `https`; set `http` for a gateway without TLS. |
 | `HTTPClient` | Custom HTTP transport. When supplied, `Insecure` is ignored — configure TLS on the client yourself. |
+
+Prefer a custom `HTTPClient` that trusts the internal CA over `Insecure`.
 
 ## Listing and releasing claims
 

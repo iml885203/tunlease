@@ -6,6 +6,9 @@ Use this checklist when a third party calls a fixed callback URL that your team
 cannot change and developers need to route selected staging paths to localhost.
 It connects the role-specific guides without replacing them.
 
+Read [Tunlease concepts](concepts.md) for the canonical topology, URL map,
+vocabulary, and failure contract before changing production-like routing.
+
 ## 1. Is Tunlease for you?
 
 - [ ] You have a fixed third-party-facing endpoint, developers need to claim
@@ -18,9 +21,30 @@ optional token authentication, structured audit logs, and fail-open routing to
 the original application. See [Architecture](architecture.md) for the system,
 failure paths, and protocol details.
 
+Do not adopt it unless all of these are true:
+
+- The platform owner can route the existing staging callback host through the
+  gateway and keep the original app reachable at a separate internal origin.
+- The reserved `/_tunlease` namespace does not collide with the app.
+- The team accepts that the gateway fronts all traffic on that host, while
+  fail-open protects tunnel selection—not a gateway/Ingress outage.
+- Real staging data is permitted to reach authorized developer laptops.
+
+Assign owners before deployment:
+
+| Responsibility | Typical owner |
+|---|---|
+| DNS, TLS, Ingress cutover, HA/bypass, rollback | Platform team |
+| Origin URL, callback allowlist, idempotency, synthetic test | Service owner |
+| Tokens, audit access, data-handling policy | Platform/security owner |
+| Local service, narrow claim, cleanup | Developer |
+
 ## 2. Get the images
 
 - [ ] Build and push `tunlease-gateway` to a registry your cluster can pull from.
+
+This repository does not publish a shared image or installer. The platform team
+must publish artifacts before the developer quick start is executable.
 
 The manual GitLab CI job `build-images-self-hosted` builds the gateway Dockerfile
 target with `docker buildx` for `linux/amd64` and `linux/arm64`, then pushes
@@ -59,6 +83,9 @@ WebSocket connection. Configure the Ingress or load balancer to preserve
 WebSocket upgrades and use read/send timeouts of at least 3600 seconds. No UDP
 listener or forwarding is needed.
 
+Route `/` on the existing callback host to the gateway without rewriting the
+path. A path-only `/tunlease` mount cannot intercept `/webhooks/...`.
+
 ## 4. Front the app with the gateway
 
 - [ ] Follow
@@ -84,3 +111,9 @@ approved path.
   request reaches localhost.
 - [ ] Release the claim, then confirm the path returns to the original
   application.
+- [ ] Interrupt only the developer tunnel and confirm pre-dispatch traffic goes
+  to the origin.
+- [ ] Exercise the platform's separate gateway-outage HA/bypass and rollback
+  procedure.
+- [ ] Verify a real provider signature and duplicate-delivery/idempotency case
+  before onboarding developers.

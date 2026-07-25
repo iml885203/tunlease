@@ -4,6 +4,9 @@
 
 Tunlease 可以暫時把 staging 固定 callback path 轉到你的電腦。本指南假設平台團隊已把 `tunlease-gateway` 部署在目標 endpoint 前面，並設定可認領的 path。你不需要 Kubernetes 權限。
 
+Callback host、gateway URL、control prefix、claim、lease 與 tunnel 的關係，
+請先看一頁的[核心概念與 URL 對照](concepts.zh-TW.md)。
+
 開始前，向 Tunlease 維護者取得：
 
 - Gateway URL。
@@ -16,17 +19,21 @@ CLI 不會自動建立或搜尋 token。Gateway 使用預設的無認證設定�
 
 ```bash
 # macOS 與 Linux
-curl -fsSL https://tunlease.example.com/install/install.sh | bash
+# 請把 YOUR_TUNLEASE_HOST 換成團隊發布 installer 的 host。
+curl -fsSL https://YOUR_TUNLEASE_HOST/install/install.sh | bash
 tunle --version
 ```
 
 ```powershell
 # Windows PowerShell（amd64）
-irm https://tunlease.example.com/install/install.ps1 | iex
+# 請把 YOUR_TUNLEASE_HOST 換成團隊發布 installer 的 host。
+irm https://YOUR_TUNLEASE_HOST/install/install.ps1 | iex
 tunle --version
 ```
 
-macOS/Linux installer 會偵測 OS 與 amd64/arm64，安裝到 `~/.local/bin/tunle`，驗證 SHA-256，並把上一版保留為 `.prev`。
+本 repo 不會在 placeholder hostname 發布共用 installer；平台團隊必須先發布
+artifact 與 installer。macOS/Linux installer 會偵測 OS 與 amd64/arm64，
+安裝到 `~/.local/bin/tunle`、驗證 SHA-256，並把上一版保留為 `.prev`。
 
 Windows installer 會下載原生 amd64 executable 到 `%LOCALAPPDATA%\tunlease`、驗證 SHA-256、把上一版保留為 `tunle.exe.prev`，並將目錄加入 user `PATH`。tunnel transport 是 Tunlease 專用的。
 
@@ -72,8 +79,9 @@ token: YOUR_PERSONAL_TOKEN
 啟用認證時，不要把 token commit 到 repo，也不要放進共用文件。
 
 Gateway URL 的 scheme 可省略，預設為 `https`；沒有 TLS 的 gateway 請明確寫
-`http://`。`--insecure` 會跳過 gateway TLS 憑證的驗證（用於自簽或內網 gateway）
-——它不會削弱 tunnel 本身的 inner TLS，那仍以 fingerprint pin 住。
+`http://`。`--insecure` 會跳過 gateway TLS 憑證驗證。Inner tunnel 雖仍使用
+fingerprint pinning，但 fingerprint 是透過 outer connection 取得；完整 MITM
+可以替換它。只在可信網路使用 `--insecure`，並優先安裝 internal CA。
 
 ## 開啟 tunnel
 
@@ -90,6 +98,14 @@ tunle claim --to 8080 /webhooks/provider/callback/*
 - `claim` 會留在 foreground 維持 tunnel 與 heartbeat；Ctrl+C 會釋放租約。Process 意外結束後，server 會在 TTL 到期時清除租約。
 - `--detach` 讓 claim 在背景執行並立即返回（印出 claim id 與 log 路徑），適合無法持有阻塞式 process 的 script 或 agent。用 `tunle release`（依 path 或 `--to`）停止。
 - Claim 期間，該 path 下真正的 staging callback 都會到本機；其他 path 不受影響。
+
+Segment boundary、query handling、overlap、case sensitivity 與 proxy normalization
+請看 [canonical path 模型](concepts.zh-TW.md#path-模型)。
+
+該 staging path 下的真實 payload、credential 與個資會到達你的電腦，也可能進入
+local log。只使用已授權 path 並遵循團隊資料處理政策。Callback handler 必須
+idempotent：provider 會 retry，而 tunnel dispatch 後的失敗若 replay 到原 app，
+可能造成重複副作用。
 
 多個 path 可以共用同一個 local port：
 
@@ -109,6 +125,25 @@ tunle release --to 8080
 ```
 
 本機 claim metadata 存在 `~/.tunlease/state.json`，其中沒有 token。即使檔案遺失，`release PATH` 仍可查詢 server 並釋放目前 identity 擁有的租約。
+
+## Automation
+
+Agent 或 script 無法維持 foreground process 時使用 `--detach`：
+
+```bash
+set -e
+tunle claim --detach --to 8080 /webhooks/provider/callback/*
+tunle list
+
+# 在此執行會觸發 callback 的測試。
+
+tunle release /webhooks/provider/callback/*
+```
+
+務必把 release 放在 workflow cleanup/finally。以 command exit status，而不是
+human-readable text，判斷成功。Claim 後先確認 `tunle list` 出現該 path，並送一個
+synthetic callback，再開始 destructive/stateful test。Detached output 會提供
+claim ID 與 log path；診斷 reconnect 時請保留該 log。
 
 ## 疑難排解
 
@@ -134,7 +169,7 @@ Callback 仍然進到 staging app
 : scheme 預設為 `https`，client 不會自動退回 `http`。若 gateway 沒有 TLS（例如 localhost），請改用明確的 `http://` gateway URL。
 
 `x509: certificate signed by unknown authority`
-: gateway 用 HTTPS，但憑證是自簽或內網 CA，本機不信任。加上 `--insecure`（或 `TUNLEASE_INSECURE=1`）。這只跳過 gateway 的外層 TLS 檢查；tunnel 的 inner TLS 仍以 fingerprint pin 住。
+: 應優先安裝 internal CA。只在可信網路使用 `--insecure`（或 `TUNLEASE_INSECURE=1`）；它會取消 outer server authentication，而 inner fingerprint 經由該 connection 取得，無法阻擋完整 MITM。
 
 使用其他 release URL
 : 設定 `TUNLEASE_BASE_URL`，或在 `tunle update` 加上 `--base-url`。
