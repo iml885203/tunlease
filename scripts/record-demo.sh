@@ -8,7 +8,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 DOMAIN=tunlease-relay.dotw.me
-DEMO_PATH=/demo/testing/my-first-tunnel/
+DEMO_PATH=/demo/my-tunnel/
 PORT_LOCAL=8080
 TMP=$(mktemp -d /tmp/tunlease-vhs.XXXXXX)
 BIN="$TMP/bin"
