@@ -13,8 +13,9 @@ Workflow 會計算下一個 stable semantic version，並在建立 annotated tag
 驗證。接著才會將 multi-architecture gateway images 發布到 GHCR，並建立
 包含 CLI binaries 與 SHA-256 files 的 GitHub Release。發布完成後會平行
 dispatch Homebrew tap 與 Scoop bucket updaters、等待各自的 tests 與 merge，
-並確認兩個 package definitions 都符合新版本。Preflight 失敗時不會建立
-version tag。
+並確認兩個 package definitions 都符合新版本。Release 的最後一步會將對應的
+immutable gateway image dispatch 到 public relay infrastructure，並等待該次
+部署及 health check 成功。Preflight 失敗時不會建立 version tag。
 
 發布前需設定 `HOMEBREW_TAP_TOKEN` repository secret。請使用只限
 `iml885203/homebrew-tap` 的 fine-grained personal access token，repository
@@ -28,6 +29,14 @@ token 只負責 dispatch 與觀察該 workflow。
 `iml885203/scoop-bucket`，repository permissions 為
 `Actions: Read and write` 與 `Contents: Read`。也可用既有 release version
 手動執行 **Sync Scoop** workflow，以進行驗證或復原。
+
+請設定 `PUBLIC_RELAY_INFRA_TOKEN` repository secret，使用只限
+`iml885203/tunlease-public-relay-infra` 的 fine-grained personal access
+token。Repository permissions 需為 `Actions: Read` 與
+`Contents: Read and write`：Contents write 用於送出已驗證的
+`repository_dispatch`，Actions read 則讓 release workflow 等待並確認該次
+部署。Infrastructure workflow 會拒絕來源 repository 或 stable semantic
+version payload 不符合預期的 dispatch。
 
 手動推送合法的 annotated tag 仍可作為復原方式；tag CI 會使用同一份
 reusable artifact workflow。

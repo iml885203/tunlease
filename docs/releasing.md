@@ -16,7 +16,10 @@ annotated tag. It then publishes multi-architecture gateway images to GHCR and
 creates a GitHub Release with CLI binaries and SHA-256 files. After publishing,
 it dispatches the Homebrew tap and Scoop bucket updaters in parallel, waits for
 their tests and merges, and verifies that both package definitions match the
-new version. A failed preflight never creates a version tag.
+new version. As the final release step, it dispatches the matching immutable
+gateway image to the public relay infrastructure and waits for that deployment
+and its health check to succeed. A failed preflight never creates a version
+tag.
 
 Configure the `HOMEBREW_TAP_TOKEN` repository secret before releasing. Use a
 fine-grained personal access token restricted to `iml885203/homebrew-tap` with
@@ -31,6 +34,15 @@ to `iml885203/scoop-bucket` with repository permissions
 `Actions: Read and write` and `Contents: Read`. The **Sync Scoop** workflow can
 also be run manually with an existing release version for verification or
 recovery.
+
+Configure the `PUBLIC_RELAY_INFRA_TOKEN` repository secret with a fine-grained
+personal access token restricted to
+`iml885203/tunlease-public-relay-infra`. It needs repository permissions
+`Actions: Read` and `Contents: Read and write`: Contents write sends the
+authenticated `repository_dispatch`, and Actions read lets the release
+workflow wait for and verify the resulting deployment. The infrastructure
+workflow rejects dispatches whose source repository or stable semantic version
+payload is unexpected.
 
 Pushing a valid annotated tag manually remains a recovery path; tag CI uses
 the same reusable artifact workflow.
