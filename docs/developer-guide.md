@@ -62,9 +62,9 @@ tunle release '/webhooks/provider/callback/*'
 tunle release --to 8080
 ```
 
-`--detach` starts a background process. Always use `release` in automation
-cleanup. Treat command exit status as the interface; human-readable output is
-not a stable serialization format. Local metadata in
+`-d` is shorthand for `--detach`; it starts a background process. Always use
+`release` in automation cleanup. Treat command exit status as the interface;
+human-readable output is not a stable serialization format. Local metadata in
 `~/.tunlease/state.json` contains no token.
 
 Claim the narrowest path, never `/`, and assume callbacks contain real staging

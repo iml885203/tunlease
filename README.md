@@ -88,6 +88,8 @@ Then claim the callback path:
 
 ```bash
 tunle claim '/webhooks/provider/callback/*' --to 8080 --gateway myapp.example.com
+# Or return immediately and keep the tunnel in the background:
+tunle claim '/webhooks/provider/callback/*' --to 8080 -d --gateway myapp.example.com
 ```
 
 Ctrl+C releases it. HTTPS is the default; use an explicit `http://` only for a

@@ -59,7 +59,8 @@ tunle release '/webhooks/provider/callback/*'
 tunle release --to 8080
 ```
 
-`--detach` 會啟動背景 process。Automation 必須在 cleanup 執行 `release`。
+`-d` 是 `--detach` 的 shorthand，會啟動背景 process。Automation 必須在
+cleanup 執行 `release`。
 請以 command exit status 作為介面；human-readable output 不是穩定序列化格式。
 `~/.tunlease/state.json` 的本機 metadata 不含 token。
 

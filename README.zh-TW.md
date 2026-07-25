@@ -83,6 +83,8 @@ irm https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/install.ps
 
 ```bash
 tunle claim '/webhooks/provider/callback/*' --to 8080 --gateway myapp.example.com
+# 或立即返回，讓 tunnel 在背景執行：
+tunle claim '/webhooks/provider/callback/*' --to 8080 -d --gateway myapp.example.com
 ```
 
 Ctrl+C 釋放。預設使用 HTTPS；只有 gateway 沒有 TLS（例如 localhost）才明確填

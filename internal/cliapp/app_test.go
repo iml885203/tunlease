@@ -49,6 +49,20 @@ func TestCheckLocalTarget(t *testing.T) {
 	}
 }
 
+func TestClaimDetachShorthand(t *testing.T) {
+	claim, _, err := NewCommand().Find([]string{"claim"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	flag := claim.Flags().Lookup("detach")
+	if flag == nil {
+		t.Fatal("detach flag is missing")
+	}
+	if flag.Shorthand != "d" {
+		t.Fatalf("detach shorthand = %q, want %q", flag.Shorthand, "d")
+	}
+}
+
 func TestLoadConfigMissingIsValid(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	got, err := loadConfig()

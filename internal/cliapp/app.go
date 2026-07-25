@@ -111,7 +111,7 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 		},
 	}
 	claimCmd.Flags().IntVar(&to, "to", 0, "local port to receive the traffic")
-	claimCmd.Flags().BoolVar(&detach, "detach", false, "run in the background and return immediately (stop with tunle release)")
+	claimCmd.Flags().BoolVarP(&detach, "detach", "d", false, "run in the background and return immediately (stop with tunle release)")
 	claimCmd.Flags().BoolVar(&daemon, "_daemon", false, "")
 	_ = claimCmd.Flags().MarkHidden("_daemon")
 	_ = claimCmd.MarkFlagRequired("to")
