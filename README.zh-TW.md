@@ -6,7 +6,7 @@
 照常打到真正的 app。Ctrl+C 釋放。
 
 ```bash
-tul claim '/demo/testing/my-first-tunnel/' -p 8080 -g tunlease.dotw.me
+tul claim '/demo/testing/my-first-tunnel/' -p 8080 -g relay.tunlease.dotw.me
 ```
 
 ![在 Tunlease public demo relay claim path，並將流量轉送到 laptop 上的服務](assets/demo.gif)
@@ -82,7 +82,7 @@ irm https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/install.ps
 接著 claim callback path：
 
 ```bash
-tul claim '/demo/testing/my-first-tunnel/' -p 8080 -g tunlease.dotw.me
+tul claim '/demo/testing/my-first-tunnel/' -p 8080 -g relay.tunlease.dotw.me
 ```
 
 Ctrl+C 釋放。若要使用自己的固定 callback host，而不是 public demo，請看

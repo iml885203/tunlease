@@ -6,7 +6,7 @@ Claim one path on an existing fixed endpoint; its live traffic reaches your
 laptop while every other path keeps serving the real app. Ctrl+C to release.
 
 ```bash
-tul claim '/demo/testing/my-first-tunnel/' -p 8080 -g tunlease.dotw.me
+tul claim '/demo/testing/my-first-tunnel/' -p 8080 -g relay.tunlease.dotw.me
 ```
 
 ![Claiming a path on the public Tunlease demo relay and forwarding it to a server on your laptop](assets/demo.gif)
@@ -87,7 +87,7 @@ irm https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/install.ps
 Then claim the callback path:
 
 ```bash
-tul claim '/demo/testing/my-first-tunnel/' -p 8080 -g tunlease.dotw.me
+tul claim '/demo/testing/my-first-tunnel/' -p 8080 -g relay.tunlease.dotw.me
 ```
 
 Ctrl+C releases it. To use your own fixed callback host instead of the public

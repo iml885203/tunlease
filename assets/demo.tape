@@ -21,6 +21,6 @@ Env TERM "xterm-256color"
 Env FORCE_COLOR "1"
 
 Sleep 500ms
-Type "tul claim '/demo/testing/my-first-tunnel/' -p 8080 -g tunlease.dotw.me"
+Type "tul claim '/demo/testing/my-first-tunnel/' -p 8080 -g relay.tunlease.dotw.me"
 Enter
 Sleep 8s
