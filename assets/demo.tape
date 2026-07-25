@@ -18,6 +18,8 @@ Set Theme "Catppuccin Mocha"
 Set TypingSpeed 45ms
 
 Sleep 500ms
-Type "tul claim '/demo/testing/readme/' --to 3007 -d --gateway tunlease.dotw.me"
+Type "tul claim '/demo/testing/my-first-tunnel/' -p 8080 -g tunlease.dotw.me"
 Enter
 Sleep 4s
+Ctrl+C
+Sleep 1s

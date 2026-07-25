@@ -8,14 +8,14 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 DOMAIN=tunlease.dotw.me
-DEMO_PATH=/demo/testing/readme/
-PORT_LOCAL=3007
+DEMO_PATH=/demo/testing/my-first-tunnel/
+PORT_LOCAL=8080
 TMP=$(mktemp -d /tmp/tunlease-vhs.XXXXXX)
 BIN="$TMP/bin"
 PIDS=()
 cleanup() {
-  HOME="$TMP/home" "$BIN/tul" release --to "$PORT_LOCAL" \
-    --gateway "$DOMAIN" >/dev/null 2>&1 || true
+  HOME="$TMP/home" "$BIN/tul" release -p "$PORT_LOCAL" \
+    -g "$DOMAIN" >/dev/null 2>&1 || true
   kill "${PIDS[@]}" 2>/dev/null || true
   rm -rf "$TMP"
 }
@@ -46,7 +46,22 @@ for i in $(seq 1 20); do
 done
 echo "Public relay reachable at https://$DOMAIN — recording…"
 
+# Exercise the foreground tunnel while VHS is recording it. Retry briefly
+# because the claim command needs a moment to finish its WebSocket handshake.
+VERIFY_RESULT="$TMP/relay-verified"
+(
+  for _ in $(seq 1 30); do
+    if curl -fsS "https://$DOMAIN$DEMO_PATH" |
+      grep -q "hello from my laptop"; then
+      touch "$VERIFY_RESULT"
+      exit 0
+    fi
+    sleep 0.2
+  done
+  exit 1
+) & PIDS+=($!)
+
 HOME="$TMP/home" vhs assets/demo.tape
-curl -fsS "https://$DOMAIN$DEMO_PATH" | grep -q "hello from my laptop"
+[ -f "$VERIFY_RESULT" ]
 echo "Verified public relay traffic reached the local server."
 echo "Recorded assets/demo.gif"
