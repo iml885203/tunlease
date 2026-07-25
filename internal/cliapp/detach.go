@@ -15,7 +15,7 @@ import (
 // and returns its id. It makes `tul claim --detach` non-blocking, which is
 // what an agent needs: the call returns once the tunnel is up, and the claim is
 // torn down later with `tul release`.
-func runDetach(paths []string, to int, gateway, token string, insecure bool, scheme string) error {
+func runDetach(ui *console, paths []string, to int, gateway, token string, insecure bool, scheme string) error {
 	self, err := os.Executable()
 	if err != nil {
 		return err
@@ -67,9 +67,9 @@ func runDetach(paths []string, to int, gateway, token string, insecure bool, sch
 			return fmt.Errorf("background claim failed to start; see %s", logPath)
 		}
 		if c, ok := findDaemonClaim(gateway, to, paths); ok {
-			fmt.Printf("claimed %s in the background (claim %s, pid %d)\n", strings.Join(paths, " "), shortID(c.ClaimID), pid)
-			fmt.Printf("logs: %s\n", logPath)
-			fmt.Printf("release with: tul release --to %d\n", to)
+			ui.success("claimed %s in the background (claim %s, pid %d)", strings.Join(paths, " "), shortID(c.ClaimID), pid)
+			ui.info("logs: %s", logPath)
+			ui.info("release with: tul release --to %d", to)
 			return nil
 		}
 		time.Sleep(200 * time.Millisecond)

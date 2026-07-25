@@ -35,7 +35,7 @@ func NewCommand() *cobra.Command {
 func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 	var gateway, token string
 	var insecure bool
-	root := &cobra.Command{Use: "tul", Short: "Claim a 3rd-party callback path and tunnel it to your machine", SilenceUsage: true, Version: fmt.Sprintf("%s (%s)", version, buildTime)}
+	root := &cobra.Command{Use: "tul", Short: "Claim a 3rd-party callback path and tunnel it to your machine", SilenceUsage: true, SilenceErrors: true, Version: fmt.Sprintf("%s (%s)", version, buildTime)}
 	// Client flags live on the client subcommands (claim/list/release), not on
 	// root, so the gateway subcommand doesn't inherit irrelevant client flags.
 	addClientFlags := func(c *cobra.Command) {
@@ -86,6 +86,7 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 		Short: "Open a tunnel that exclusively owns path(s) until it closes",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ui := newConsole(cmd.OutOrStdout(), cmd.ErrOrStderr())
 			if to < 1 || to > 65535 {
 				return errors.New("local port must be between 1 and 65535")
 			}
@@ -98,7 +99,7 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 				paths = append(paths, n)
 			}
 			if e := checkLocalTarget(to); e != nil {
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: localhost:%d is not accepting connections yet; claimed requests will return 502 until it starts\n", to)
+				ui.warning("WARNING: localhost:%d is not accepting connections yet; claimed requests will return 502 until it starts", to)
 			}
 			if detach {
 				// Non-blocking: spawn a background daemon and return once the
@@ -111,13 +112,13 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 					}
 					scheme = c.DefaultScheme
 				}
-				return runDetach(paths, to, gateway, token, insecure || os.Getenv("TUNLEASE_INSECURE") != "", scheme)
+				return runDetach(ui, paths, to, gateway, token, insecure || os.Getenv("TUNLEASE_INSECURE") != "", scheme)
 			}
 			c, e := get()
 			if e != nil {
 				return e
 			}
-			return runClaim(c, paths, to, daemon)
+			return runClaim(ui, c, paths, to, daemon)
 		},
 	}
 	claimCmd.Flags().IntVar(&to, "to", 0, "local port to receive the traffic")
@@ -138,7 +139,7 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 			if e != nil {
 				return e
 			}
-			return runList(cmd.Context(), c, all)
+			return runList(newConsole(cmd.OutOrStdout(), cmd.ErrOrStderr()), cmd.Context(), c, all)
 		},
 	}
 	listCmd.Flags().BoolVar(&all, "all", false, "show all owners' claims")
@@ -161,7 +162,7 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 			if relTo == 0 && len(args) == 0 {
 				return errors.New("specify a PATH or --to PORT")
 			}
-			return runRelease(cmd.Context(), c, args, relTo)
+			return runRelease(newConsole(cmd.OutOrStdout(), cmd.ErrOrStderr()), cmd.Context(), c, args, relTo)
 		},
 	}
 	releaseCmd.Flags().IntVar(&relTo, "to", 0, "release all claims tunnelled to this local port")
@@ -172,7 +173,7 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 	return root
 }
 
-func runClaim(c *tunnelclient.Client, paths []string, to int, daemon bool) error {
+func runClaim(ui *console, c *tunnelclient.Client, paths []string, to int, daemon bool) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -191,17 +192,17 @@ func runClaim(c *tunnelclient.Client, paths []string, to int, daemon bool) error
 	defer cleanupSessionState(c.Gateway(), to, cl.Paths)
 
 	if cl.ExpiresAt != nil {
-		fmt.Printf("claimed %s until %s (claim %s)\n", strings.Join(cl.Paths, " "), cl.ExpiresAt.Local().Format("15:04:05"), shortID(cl.ID))
+		ui.success("claimed %s until %s (claim %s)", strings.Join(cl.Paths, " "), cl.ExpiresAt.Local().Format("15:04:05"), shortID(cl.ID))
 	} else {
-		fmt.Printf("claimed %s (claim %s)\n", strings.Join(cl.Paths, " "), shortID(cl.ID))
+		ui.success("claimed %s (claim %s)", strings.Join(cl.Paths, " "), shortID(cl.ID))
 	}
-	fmt.Printf("WARNING: real 3rd-party traffic for these paths now flows to localhost:%d\n", to)
-	fmt.Println("tunnel connected  (Ctrl+C to release)")
+	ui.noticeOut("WARNING: real 3rd-party traffic for these paths now flows to localhost:%d", to)
+	ui.status("tunnel connected  (Ctrl+C to release)")
 	for {
 		select {
 		case <-ctx.Done():
 			_ = session.Close()
-			fmt.Println("\nreleased, tunnel closed")
+			ui.info("\nreleased, tunnel closed")
 			return nil
 		case event, ok := <-session.Events():
 			if !ok {
@@ -212,18 +213,18 @@ func runClaim(c *tunnelclient.Client, paths []string, to int, daemon bool) error
 			}
 			switch event.Type {
 			case tunnelclient.EventTunnelReconnected:
-				fmt.Println("tunnel reconnected")
+				ui.status("tunnel reconnected")
 				previous := cl
 				cl = event.Claim
 				st := loadState()
 				st.removeSession(c.Gateway(), to, previous.Paths)
 				st.add(stateClaim{ClaimID: cl.ID, Gateway: c.Gateway(), Paths: cl.Paths, To: to, PID: pid})
 				saveState(st)
-				fmt.Printf("paths remain claimed as %s\n", shortID(cl.ID))
+				ui.status("paths remain claimed as %s", shortID(cl.ID))
 			case tunnelclient.EventLocalTargetError:
-				fmt.Printf("WARNING: request could not reach localhost:%d: %v\n", to, event.Err)
+				ui.warningOut("WARNING: request could not reach localhost:%d: %v", to, event.Err)
 			case tunnelclient.EventRequestActivity:
-				fmt.Printf("→ %s %s  %d  %s\n", event.Method, event.Path, event.Status, formatActivityDuration(event.Duration))
+				ui.activity(event.Method, event.Path, event.Status, formatActivityDuration(event.Duration))
 			}
 		}
 	}
@@ -250,7 +251,7 @@ func cleanupSessionState(gateway string, to int, paths []string) {
 	saveState(st)
 }
 
-func runList(ctx context.Context, c *tunnelclient.Client, all bool) error {
+func runList(ui *console, ctx context.Context, c *tunnelclient.Client, all bool) error {
 	st := loadState()
 	mine := map[string]stateClaim{}
 	for _, s := range st.Claims {
@@ -269,31 +270,33 @@ func runList(ctx context.Context, c *tunnelclient.Client, all bool) error {
 		target := "owner=" + x.Owner
 		suffix := ""
 		status := "connected"
+		expiring := false
 		if x.ExpiresAt != nil {
 			remaining := time.Until(*x.ExpiresAt).Round(time.Second)
 			if remaining < 0 {
 				remaining = 0
 			}
 			status = "expires in " + remaining.String()
+			expiring = true
 		}
 		if own {
 			target = fmt.Sprintf("→ localhost:%d", s.To)
 			suffix = "  (you)"
 		}
-		fmt.Printf("%-40s %-24s %-16s %s%s\n", strings.Join(x.Paths, ","), target, status, x.StartedAt.Local().Format("15:04:05"), suffix)
+		ui.claimRow(strings.Join(x.Paths, ","), target, status, x.StartedAt.Local().Format("15:04:05"), suffix, own, expiring)
 		shown++
 	}
 	if shown == 0 {
 		if all {
-			fmt.Println("no active claims")
+			ui.info("no active claims")
 		} else {
-			fmt.Println("no active claims of yours (use --all to see everyone's)")
+			ui.info("no active claims of yours (use --all to see everyone's)")
 		}
 	}
 	return nil
 }
 
-func runRelease(ctx context.Context, c *tunnelclient.Client, args []string, relTo int) error {
+func runRelease(ui *console, ctx context.Context, c *tunnelclient.Client, args []string, relTo int) error {
 	st := loadState()
 	if relTo > 0 {
 		released := 0
@@ -304,13 +307,13 @@ func runRelease(ctx context.Context, c *tunnelclient.Client, args []string, relT
 				}
 				stopDaemon(s) // stop the background daemon, if this was --detach
 				st.removeByID(s.ClaimID)
-				fmt.Printf("released %s\n", strings.Join(s.Paths, " "))
+				ui.success("released %s", strings.Join(s.Paths, " "))
 				released++
 			}
 		}
 		saveState(st)
 		if released == 0 {
-			fmt.Printf("no claims recorded for local port %d on this machine\n", relTo)
+			ui.info("no claims recorded for local port %d on this machine", relTo)
 		}
 		return nil
 	}
@@ -327,7 +330,7 @@ func runRelease(ctx context.Context, c *tunnelclient.Client, args []string, relT
 			stopDaemon(s) // stop the background daemon, if this was --detach
 			st.removeByID(s.ClaimID)
 			saveState(st)
-			fmt.Printf("released %s\n", target)
+			ui.success("released %s", target)
 			return nil
 		}
 	}
@@ -340,7 +343,7 @@ func runRelease(ctx context.Context, c *tunnelclient.Client, args []string, relT
 			if e := c.Release(ctx, x.ID); e != nil {
 				return e
 			}
-			fmt.Printf("released %s\n", target)
+			ui.success("released %s", target)
 			return nil
 		}
 	}

@@ -1,6 +1,7 @@
 package cliapp
 
 import (
+	"bytes"
 	"net"
 	"os"
 	"path/filepath"
@@ -84,6 +85,20 @@ func TestClaimDetachShorthand(t *testing.T) {
 	}
 	if flag.Shorthand != "d" {
 		t.Fatalf("detach shorthand = %q, want %q", flag.Shorthand, "d")
+	}
+}
+
+func TestCommandReturnsErrorsWithoutPrintingADuplicate(t *testing.T) {
+	command := NewCommand()
+	var stderr bytes.Buffer
+	command.SetErr(&stderr)
+	command.SetArgs([]string{"claim", "/x", "--to", "0"})
+
+	if err := command.Execute(); err == nil {
+		t.Fatal("expected an error")
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Cobra printed a duplicate error: %q", stderr.String())
 	}
 }
 

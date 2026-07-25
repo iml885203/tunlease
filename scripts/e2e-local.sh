@@ -89,6 +89,10 @@ for i in $(seq 1 20); do
   sleep 0.25
 done
 echo "OK: request activity reported"
+if LC_ALL=C grep -Fq $'\033[' "$TMP/claim.log"; then
+  fail "redirected claim log contains ANSI color"
+fi
+echo "OK: redirected claim log is plain text"
 
 # --- recursive glob 與 descendant exact path 衝突 → 409 ---
 if ./bin/tul claim --to $PORT_LOCAL /test/cb/deeper 2> "$TMP/conflict.log"; then

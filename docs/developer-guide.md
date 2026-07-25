@@ -18,6 +18,14 @@ scoop install tunlease
 Homebrew installs shell completions for bash, zsh, and fish. The CLI can also
 print a completion script directly with `tul completion SHELL`.
 
+## Console output
+
+Interactive terminals use color to distinguish successful lifecycle events,
+connection state, warnings, errors, and HTTP status classes. Command behavior,
+exit status, and stdout/stderr destinations remain unchanged. Color is disabled
+automatically for pipes, redirected output, and detached claim logs. Set
+`NO_COLOR=1` to disable it explicitly. Top-level errors are printed once.
+
 ## Connect
 
 Ask the platform team for the callback host, an allowed path, and optionally a

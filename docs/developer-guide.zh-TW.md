@@ -18,6 +18,13 @@ scoop install tunlease
 Homebrew 會安裝 bash、zsh 與 fish shell completions。CLI 也可透過
 `tul completion SHELL` 直接輸出 completion script。
 
+## Console output
+
+互動式 terminal 會用顏色區分成功的 lifecycle event、連線狀態、warning、
+error 與各類 HTTP status；command 行為、exit status 及 stdout/stderr 目的地
+維持不變。Pipe、redirect output 與 detached claim log 會自動停用顏色，也可
+設定 `NO_COLOR=1` 明確停用。Top-level error 只會印一次。
+
 ## 連線
 
 向平台團隊取得 callback host、允許的 path，以及可選的個人 token。先啟動本機
