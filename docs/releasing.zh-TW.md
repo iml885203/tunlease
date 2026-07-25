@@ -4,20 +4,18 @@
 
 ## 發布 release
 
-1. 從乾淨且 CI 通過的 `main` branch 開始。
-2. 選擇下一個 semantic version。
-3. 確認所有 user-facing 文件及其成對的 `*.zh-TW.md` 內容一致。
-4. 建立並推送 annotated tag：
+1. 確認 `main` 包含預定發布的變更，以及成對的英文與繁中文件。
+2. 在 GitHub Actions 從 `main` 執行 **Release** workflow。
+3. 選擇 `patch`、`minor` 或 `major`。
 
-   ```bash
-   VERSION=vX.Y.Z # 替換為要發布的版本
-   git tag -a "$VERSION" -m "$VERSION"
-   git push origin "$VERSION"
-   ```
+Workflow 會計算下一個 stable semantic version，並在建立 annotated tag
+之前執行 formatting、vet、build、race tests、固定版本 lint 與 Helm
+驗證。接著才會將 multi-architecture gateway images 發布到 GHCR，並建立
+包含 CLI binaries 與 SHA-256 files 的 GitHub Release。Preflight
+失敗時不會建立 version tag。
 
-Tag workflow 會驗證版本、執行測試與 lint、將 multi-architecture gateway
-image 發布到 GHCR，並建立包含 CLI binaries 與 SHA-256 files 的 GitHub
-Release。
+手動推送合法的 annotated tag 仍可作為復原方式；tag CI 會使用同一份
+reusable artifact workflow。
 
 驗證已完成的 release：
 
@@ -33,7 +31,7 @@ docker pull "ghcr.io/iml885203/tunlease-gateway:$VERSION"
 ## 更新 Homebrew tap
 
 Tap 每六小時檢查最新 GitHub Release，並建立 formula update pull request。
-Review macOS 與 Linux test run 後再 merge。
+另一個 workflow 只會在 macOS 與 Linux tests 都通過後 merge 該 PR。
 
 若 automation 無法使用，請在 GitHub Release 成功後手動更新：
 
@@ -73,8 +71,8 @@ Tap 會從 source build，不依賴預先編譯的 release binaries。
 ## 更新 Scoop bucket
 
 `iml885203/scoop-bucket` repository 每六小時檢查最新 release 並建立
-manifest update pull request。其 Windows workflow 會透過 Scoop 安裝 manifest
-並執行 CLI；請在 merge 前 review 該次 run。
+manifest update pull request。其 Windows workflow 會透過 Scoop 安裝
+manifest 並執行 CLI；另一個 workflow 只會在該 test 成功後 merge PR。
 
 Manifest 使用 release workflow 發布的 Windows binary 與 SHA-256 file。
 若 automation 無法使用，須一起更新 `version`、download URL 與 hash。

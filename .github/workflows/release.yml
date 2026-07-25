@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Semantic version component to increment
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the main branch
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "Run releases from the main branch" >&2
+          exit 1
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+      - name: Reject formatting drift
+        run: |
+          files=$(gofmt -l .)
+          if [ -n "$files" ]; then
+            echo "gofmt required:"
+            echo "$files"
+            exit 1
+          fi
+      - run: go vet ./...
+      - run: go build ./...
+      - run: go test -race ./...
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+      - name: Validate Helm chart
+        run: |
+          helm lint charts/tunlease
+          helm template tunlease charts/tunlease >/dev/null
+
+  tag:
+    needs: preflight
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Calculate next version
+        id: version
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          latest=$(git tag --list 'v*' --sort=-version:refname |
+            grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' |
+            head -n 1 || true)
+          if [ -z "$latest" ]; then
+            latest=v0.0.0
+          fi
+          IFS=. read -r major minor patch <<<"${latest#v}"
+          case "$BUMP" in
+            patch) patch=$((patch + 1));;
+            minor) minor=$((minor + 1)); patch=0;;
+            major) major=$((major + 1)); minor=0; patch=0;;
+            *) echo "unsupported bump: $BUMP" >&2; exit 1;;
+          esac
+          version="v${major}.${minor}.${patch}"
+          git rev-parse "$version" >/dev/null 2>&1 && {
+            echo "$version already exists" >&2
+            exit 1
+          }
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+      - name: Create verified release tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name "Logan"
+          git config user.email "iml885203@gmail.com"
+          git tag -a "$VERSION" -m "Tunlease $VERSION" "$GITHUB_SHA"
+          git push origin "$VERSION"
+          echo "Created $VERSION from $GITHUB_SHA" >>"$GITHUB_STEP_SUMMARY"
+
+  publish:
+    needs: tag
+    permissions:
+      contents: write
+      packages: write
+    uses: ./.github/workflows/publish.yml
+    with:
+      version: ${{ needs.tag.outputs.version }}
+      ref: ${{ github.sha }}
+    secrets: inherit

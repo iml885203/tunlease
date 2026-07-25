@@ -5,20 +5,19 @@ in the README.
 
 ## Publish a release
 
-1. Start from a clean `main` branch with CI passing.
-2. Choose the next semantic version.
-3. Confirm user-facing documentation and its paired `*.zh-TW.md` files agree.
-4. Create and push an annotated tag:
+1. Confirm `main` contains the intended changes and paired English/Traditional
+   Chinese documentation.
+2. In GitHub Actions, run the **Release** workflow from `main`.
+3. Select `patch`, `minor`, or `major`.
 
-   ```bash
-   VERSION=vX.Y.Z # replace with the version being published
-   git tag -a "$VERSION" -m "$VERSION"
-   git push origin "$VERSION"
-   ```
+The workflow calculates the next stable semantic version and runs formatting,
+vet, build, race tests, pinned lint, and Helm validation before it creates an
+annotated tag. It then publishes multi-architecture gateway images to GHCR and
+creates a GitHub Release with CLI binaries and SHA-256 files. A failed
+preflight never creates a version tag.
 
-The tag workflow validates the version, runs tests and lint, publishes
-multi-architecture gateway images to GHCR, and creates a GitHub Release with
-CLI binaries and SHA-256 files.
+Pushing a valid annotated tag manually remains a recovery path; tag CI uses
+the same reusable artifact workflow.
 
 Verify the completed release:
 
@@ -35,7 +34,8 @@ instead.
 ## Update the Homebrew tap
 
 The tap checks the latest GitHub Release every six hours and opens a formula
-update pull request. Review its macOS and Linux test run, then merge it.
+update pull request. A separate workflow merges that PR only after its macOS
+and Linux tests pass.
 
 If automation is unavailable, update it manually after the GitHub Release
 succeeds:
@@ -79,7 +79,8 @@ binaries.
 
 The `iml885203/scoop-bucket` repository checks the latest release every six
 hours and opens a manifest update pull request. Its Windows workflow installs
-the manifest with Scoop and runs the CLI. Review that run before merging.
+the manifest with Scoop and runs the CLI; a separate workflow merges the PR
+only after that test succeeds.
 
 The manifest uses the Windows binary and SHA-256 file published by the release
 workflow. If automation is unavailable, update its `version`, download URL, and

@@ -1,0 +1,81 @@
+name: Publish artifacts
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      ref:
+        required: true
+        type: string
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/tunlease-gateway
+          tags: |
+            type=semver,pattern=v{{version}},value=${{ inputs.version }}
+            type=semver,pattern=v{{major}}.{{minor}},value=${{ inputs.version }},enable=${{ !contains(inputs.version, '-') }}
+            type=semver,pattern=v{{major}},value=${{ inputs.version }},enable=${{ !contains(inputs.version, '-') }}
+            type=raw,value=latest,enable=${{ !contains(inputs.version, '-') }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: gateway
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  release-cli:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+      - name: Build release binaries
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          for PAIR in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+            OS=${PAIR%/*}; ARCH=${PAIR#*/}; NAME="tunle-${OS}-${ARCH}"
+            [ "$OS" = "windows" ] && NAME="${NAME}.exe"
+            GOOS=$OS GOARCH=$ARCH CGO_ENABLED=0 go build \
+              -ldflags "-s -w -X 'main.version=${VERSION}' -X 'main.buildTime=${BUILD_TIME}'" \
+              -o "$NAME" ./cmd/tunlease
+            sha256sum "$NAME" >"${NAME}.sha256"
+          done
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version }}
+          target_commitish: ${{ inputs.ref }}
+          generate_release_notes: true
+          files: |
+            tunle-linux-*
+            tunle-darwin-*
+            tunle-windows-*
