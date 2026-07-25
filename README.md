@@ -11,7 +11,8 @@ tunle claim /webhooks/stripe/* --to 8080 --gateway staging.myapp.com
 
 ![A fixed callback URL returns the app's 404 until you claim its path, then reaches a server on your laptop — on the same URL](assets/demo.gif)
 
-Unlike ngrok/localtunnel/bore, it does **not** give you a new URL. [How it compares](#how-it-compares).
+Instead of publishing another endpoint, it keeps the callback URL already in
+use. [How it compares](#how-it-compares).
 
 [Developer quick start](#quick-start-for-developers) · [Platform setup](docs/platform-deployment.md) · [Architecture](docs/architecture.md) · [Troubleshooting](docs/developer-guide.md#troubleshooting)
 
@@ -56,18 +57,21 @@ planning. See the [routing and failure contract](docs/architecture.md#routing-an
 
 Similar in spirit to [ngrok](https://ngrok.com/),
 [localtunnel](https://github.com/localtunnel/localtunnel), and
-[bore](https://github.com/ekzhang/bore) — but built for a different job. Those
-tools give you a **new** URL for a local port. Tunlease keeps a third party's
-**existing fixed** URL and reroutes just one path on it to your machine.
+[bore](https://github.com/ekzhang/bore) — but built around a different
+workflow. General-purpose tunnels publish a public endpoint for a local
+service. Tunlease instead keeps a third party's **existing fixed** callback URL
+and lets developers temporarily claim individual paths on it.
+
+This table compares the tools' built-in workflow, not every setup that can be
+assembled with custom domains, routing policies, or an external reverse proxy.
 
 | | Tunlease | ngrok | localtunnel | bore |
-|---|:---:|:---:|:---:|:---:|
-| Expose a local port | ✅ | ✅ | ✅ | ✅ |
-| Keep a third party's existing fixed URL | ✅ | ❌ | ❌ | ❌ |
-| Claim one path, leave the rest untouched | ✅ | ❌ | ❌ | ❌ |
-| Fail open to the real app | ✅ | ❌ | ❌ | ❌ |
-| Exclusive path, many developers, one URL | ✅ | ❌ | ❌ | ❌ |
-| Self-hostable | ✅ | ❌ | ✅ | ✅ |
+|---|---|---|---|---|
+| Primary endpoint model | Existing host + claimed HTTP path | Public or custom URL | Assigned URL | Public TCP port |
+| Session-scoped, exclusive path claim | Built in | No equivalent claim workflow | No | No |
+| Unclaimed paths automatically use the original app | Built in | Requires routing policy | Requires external proxy | Requires external proxy |
+| Multiple developers claim separate paths on one host | Built in | Requires manual routing | No | No |
+| Current supported relay is open source and self-hostable | Yes | No | Yes | Yes |
 
 ## Quick start for developers
 

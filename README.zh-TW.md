@@ -11,7 +11,8 @@ tunle claim /webhooks/stripe/* --to 8080 --gateway staging.myapp.com
 
 ![claim 前固定 callback URL 回 app 的 404，`tunle claim` 後同一 URL 打到本機服務](assets/demo.gif)
 
-跟 ngrok/localtunnel/bore 不同，它**不會**給你一個新 URL。[與其他工具的比較](#與其他工具的比較)。
+它不另外發布 endpoint，而是保留已經在使用的 callback URL。
+[與其他工具的比較](#與其他工具的比較)。
 
 [開發者快速上手](#開發者快速上手) · [平台部署](docs/platform-deployment.zh-TW.md) · [架構](docs/architecture.zh-TW.md) · [疑難排解](docs/developer-guide.zh-TW.md#疑難排解)
 
@@ -53,17 +54,20 @@ Gateway、Ingress 與 origin outage 需另外規劃 infrastructure 或 bypass。
 
 精神上類似 [ngrok](https://ngrok.com/)、
 [localtunnel](https://github.com/localtunnel/localtunnel)、
-[bore](https://github.com/ekzhang/bore)——但解決的問題不同。那些工具是給你的本機 port
-一個**新的** URL；Tunlease 保留第三方**既有的固定** URL，只把其中一條 path 轉到你的機器。
+[bore](https://github.com/ekzhang/bore)——但工作流程不同。一般 tunnel 會替本機服務
+發布一個 public endpoint；Tunlease 則保留第三方**既有的固定** callback URL，讓開發者
+暫時 claim 其中個別 path。
+
+下表比較的是工具內建的工作流程，不是透過 custom domain、routing policy 或外部
+reverse proxy 能組合出的所有架構。
 
 | | Tunlease | ngrok | localtunnel | bore |
-|---|:---:|:---:|:---:|:---:|
-| 對外暴露本機 port | ✅ | ✅ | ✅ | ✅ |
-| 保留第三方既有的固定 URL | ✅ | ❌ | ❌ | ❌ |
-| 只 claim 一條 path，其餘不動 | ✅ | ❌ | ❌ | ❌ |
-| Fail-open 回真正的 app | ✅ | ❌ | ❌ | ❌ |
-| 互斥 path、多開發者共用一個 URL | ✅ | ❌ | ❌ | ❌ |
-| 可自架 | ✅ | ❌ | ✅ | ✅ |
+|---|---|---|---|---|
+| 主要 endpoint 模型 | 既有 host + 已 claim 的 HTTP path | Public 或 custom URL | 分配的 URL | Public TCP port |
+| Session 範圍、互斥的 path claim | 內建 | 沒有對等的 claim workflow | 無 | 無 |
+| 未 claim 的 path 自動回原 app | 內建 | 需要 routing policy | 需要外部 proxy | 需要外部 proxy |
+| 多位開發者在同一 host claim 不同 path | 內建 | 需要手動設定 routing | 無 | 無 |
+| 目前受支援的 relay 為開源且可自架 | 是 | 否 | 是 | 是 |
 
 ## 開發者快速上手
 
