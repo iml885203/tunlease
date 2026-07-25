@@ -1,6 +1,6 @@
 # Self-hosting Tunlease
 
-[English](platform-deployment.md) · [繁體中文](platform-deployment.zh-TW.md)
+[English](self-hosting.md) · [繁體中文](self-hosting.zh-TW.md)
 
 ## Supported topology
 

@@ -5,7 +5,7 @@ This file is the repository entry point for coding agents and contributors.
 ## Authoritative documents
 
 - `docs/developer-guide.md` — CLI workflow and automation.
-- `docs/platform-deployment.md` — operator deployment and runbook.
+- `docs/self-hosting.md` — self-hosting deployment and runbook.
 - `docs/architecture.md` — implementation architecture and lifecycle.
 - `docs/go-client.md` — public Go embedding API.
 - `SECURITY.md` — security reporting and threat boundary.

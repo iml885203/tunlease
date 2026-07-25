@@ -47,7 +47,7 @@ governs who may **release** a claim.
   paths, and connection start time.
 
 Configure per-developer tokens for any gateway reachable outside a trusted
-network. See [Self-hosting Tunlease](docs/platform-deployment.md) for
+network. See [Self-hosting Tunlease](docs/self-hosting.md) for
 token setup.
 
 ## Threat model

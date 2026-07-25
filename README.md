@@ -17,7 +17,7 @@ Similar in spirit to [ngrok](https://ngrok.com/),
 it keeps the callback URL already in use and temporarily redirects only the
 path you claim.
 
-[Developer quick start](#quick-start-for-developers) · [Platform setup](docs/platform-deployment.md) · [Architecture](docs/architecture.md) · [Troubleshooting](docs/developer-guide.md#troubleshooting)
+[Developer quick start](#quick-start-for-developers) · [Self-hosting](docs/self-hosting.md) · [Architecture](docs/architecture.md) · [Troubleshooting](docs/developer-guide.md#troubleshooting)
 
 [English](README.md) · [繁體中文](README.zh-TW.md)
 
@@ -91,7 +91,7 @@ tul claim '/demo/testing/my-first-tunnel/' --to 8080 --gateway tunlease.dotw.me
 ```
 
 Ctrl+C releases it. To use your own fixed callback host instead of the public
-demo, see [Self-hosting Tunlease](docs/platform-deployment.md).
+demo, see [Self-hosting Tunlease](docs/self-hosting.md).
 
 Use the public demo only with test traffic. Claims on your own staging gateway
 receive real callbacks, including their data and credentials. Start your local
@@ -159,7 +159,7 @@ make e2e     # gateway + origin app + local app + real CLI
 Choose the shortest path for your role:
 
 - **Developer receiving callbacks or integrating a provider:** [Developer guide](docs/developer-guide.md) — installation, provider security, configuration, CLI usage, and troubleshooting ([繁中](docs/developer-guide.zh-TW.md))
-- **Self-hosting Tunlease:** [Deployment guide](docs/platform-deployment.md) — gateway setup, routing, Helm, rollout, and security ([繁中](docs/platform-deployment.zh-TW.md))
+- **Self-hosting Tunlease:** [Deployment guide](docs/self-hosting.md) — gateway setup, routing, Helm, rollout, and security ([繁中](docs/self-hosting.zh-TW.md))
 - **Contributor understanding the system:** [Architecture](docs/architecture.md) — control/data planes, routing, lifecycle, and recovery ([繁中](docs/architecture.zh-TW.md))
 - **Go application author:** [Embedding the Go client](docs/go-client.md) — module setup, lifecycle API, errors, and testing ([繁中](docs/go-client.zh-TW.md))
 
