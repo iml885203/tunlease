@@ -5,7 +5,8 @@
 Tunlease has four concepts:
 
 - **Gateway** — a whole-host proxy in front of one application.
-- **Origin** — that original application, configured by `fail_open_url`.
+- **Unclaimed target** — the original application configured by
+  `fail_open_url`, or a fixed error configured by `unclaimed_status`.
 - **Tunnel session** — one live WSS connection from a developer.
 - **Claimed paths** — prefixes exclusively owned by that connection.
 
@@ -16,8 +17,8 @@ handshake owns the paths and closing the connection releases them.
 
 The existing callback host routes `/` to the gateway. `/_tunlease` is reserved
 for health, list/release, and the tunnel WebSocket. Every other path is data
-traffic. The origin must use a separate internal URL that cannot loop through
-the public gateway.
+traffic. When configured, the origin must use a separate internal URL that
+cannot loop through the public gateway.
 
 ```mermaid
 flowchart LR
@@ -56,9 +57,9 @@ The remaining HTTP API is:
 | State | Result |
 |---|---|
 | Path matches a connected session | Send through yamux to localhost |
-| No matching connected session | Proxy to the origin |
-| Tunnel/local failure after dispatch starts | Return an error; never replay |
-| Gateway or origin unavailable | Platform outage |
+| No matching connected session | Proxy to the origin, or return the configured error |
+| Tunnel/local failure after dispatch starts | Return `502 claimed tunnel target unavailable`; never replay |
+| Gateway or configured origin unavailable | Platform outage |
 
 Paths must start with `/`, end in `/*`, and not otherwise contain `*`.
 Each path is at most 512 bytes and one session may own at most 8 paths.

@@ -77,6 +77,58 @@ func TestSessionDataPathFallbackAndClose(t *testing.T) {
 	}
 }
 
+func TestUnavailableLocalTargetReturnsDescriptiveBadGatewayAndEvent(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	if err = listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	gateway := newTestGateway(t, []string{"/test/"})
+	client, err := tunnelclient.New(tunnelclient.Config{
+		Gateway: gateway.http.URL, HTTPClient: gateway.http.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.Start(context.Background(), []string{"/test/unavailable"}, port)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = session.Close() }()
+
+	response, err := gateway.http.Client().Get(gateway.http.URL + "/test/unavailable/hook")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, readErr := io.ReadAll(response.Body)
+	_ = response.Body.Close()
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if response.StatusCode != http.StatusBadGateway {
+		t.Fatalf("status = %d, body = %q", response.StatusCode, body)
+	}
+	if string(body) != "claimed tunnel target unavailable\n" {
+		t.Fatalf("body = %q", body)
+	}
+
+	select {
+	case event := <-session.Events():
+		if event.Type != tunnelclient.EventLocalTargetError {
+			t.Fatalf("event type = %q", event.Type)
+		}
+		if event.Err == nil || !strings.Contains(event.Err.Error(), "127.0.0.1") {
+			t.Fatalf("event error = %v", event.Err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("local target failure event was not emitted")
+	}
+}
+
 func TestSessionReconnectReplacesClaim(t *testing.T) {
 	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, "local")

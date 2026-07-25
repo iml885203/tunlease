@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/iml885203/tunlease/pkg/tunnelclient"
 	"github.com/spf13/cobra"
@@ -74,6 +76,9 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 		Short: "Open a tunnel that exclusively owns path(s) until it closes",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if to < 1 || to > 65535 {
+				return errors.New("local port must be between 1 and 65535")
+			}
 			paths := make([]string, 0, len(args))
 			for _, p := range args {
 				n, e := NormalizePath(p)
@@ -81,6 +86,9 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 					return fmt.Errorf("%q: %w", p, e)
 				}
 				paths = append(paths, n)
+			}
+			if e := checkLocalTarget(to); e != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: localhost:%d is not accepting connections yet; claimed requests will return 502 until it starts\n", to)
 			}
 			if detach {
 				// Non-blocking: spawn a background daemon and return once the
@@ -197,9 +205,19 @@ func runClaim(c *tunnelclient.Client, paths []string, to int, daemon bool) error
 				st.add(stateClaim{ClaimID: cl.ID, Gateway: c.Gateway(), Paths: cl.Paths, To: to, PID: pid})
 				saveState(st)
 				fmt.Printf("paths remain claimed as %s\n", shortID(cl.ID))
+			} else if event.Type == tunnelclient.EventLocalTargetError {
+				fmt.Printf("WARNING: request could not reach localhost:%d: %v\n", to, event.Err)
 			}
 		}
 	}
+}
+
+func checkLocalTarget(port int) error {
+	connection, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", fmt.Sprint(port)), 250*time.Millisecond)
+	if err != nil {
+		return err
+	}
+	return connection.Close()
 }
 
 func cleanupSessionState(gateway string, to int, paths []string) {

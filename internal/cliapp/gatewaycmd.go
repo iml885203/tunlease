@@ -29,6 +29,15 @@ func buildOriginProxy(originURL string) (*httputil.ReverseProxy, error) {
 	return httputil.NewSingleHostReverseProxy(target), nil
 }
 
+func buildFailOpen(config gatewayconfig.Config) (http.Handler, error) {
+	if config.UnclaimedStatus != 0 {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, http.StatusText(config.UnclaimedStatus), config.UnclaimedStatus)
+		}), nil
+	}
+	return buildOriginProxy(config.FailOpenURL)
+}
+
 func newGatewayCommand() *cobra.Command {
 	var configPath string
 	cmd := &cobra.Command{
@@ -83,11 +92,17 @@ func runGateway(parent context.Context, configPath string) error {
 
 	store := registry.NewMemory(config.MaxClaims, config.Whitelist, logger)
 	tunnel := gatewayd.NewTunnel(store, gatewayTokens(config))
-	origin, err := buildOriginProxy(config.FailOpenURL)
+	failOpen, err := buildFailOpen(config)
 	if err != nil {
 		return err
 	}
-	gateway := &gatewayd.Server{Store: store, Tokens: gatewayTokens(config), Tunnel: tunnel, FailOpen: origin}
+	gateway := &gatewayd.Server{
+		Store:            store,
+		Tokens:           gatewayTokens(config),
+		Tunnel:           tunnel,
+		FailOpen:         failOpen,
+		DisableClaimList: config.DisableClaimList,
+	}
 
 	ctx, stop := signal.NotifyContext(parent, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -96,7 +111,7 @@ func runGateway(parent context.Context, configPath string) error {
 		Handler:           gateway.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-	logger.Info("gateway listening", "addr", config.Listen, "origin", config.FailOpenURL)
+	logger.Info("gateway listening", "addr", config.Listen, "origin", config.FailOpenURL, "unclaimed_status", config.UnclaimedStatus)
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- server.ListenAndServe() }()
 	select {

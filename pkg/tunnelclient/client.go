@@ -97,6 +97,7 @@ type EventType string
 
 const (
 	EventTunnelReconnected EventType = "tunnel_reconnected"
+	EventLocalTargetError  EventType = "local_target_error"
 )
 
 // Event describes a best-effort, non-terminal lifecycle notification. Slow
@@ -252,6 +253,10 @@ func (s *Session) run(ctx context.Context, reconnects <-chan tunnelUpdate, stopT
 			if update.err != nil {
 				s.setError(update.err)
 				return
+			}
+			if update.event != nil {
+				s.emit(*update.event)
+				continue
 			}
 			s.setClaim(update.claim)
 			s.emit(Event{Type: EventTunnelReconnected, Claim: update.claim})

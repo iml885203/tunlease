@@ -1,8 +1,10 @@
 package cliapp
 
 import (
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -20,6 +22,30 @@ func TestNormalizePath(t *testing.T) {
 	}
 	if _, e := NormalizePath("/x/*/y"); e == nil {
 		t.Fatal("accepted inner wildcard")
+	}
+}
+
+func TestCheckLocalTarget(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, rawPort, err := net.SplitHostPort(listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(rawPort)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = checkLocalTarget(port); err != nil {
+		t.Fatalf("listening target reported unavailable: %v", err)
+	}
+	if err = listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err = checkLocalTarget(port); err == nil {
+		t.Fatal("closed target reported available")
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -33,11 +34,13 @@ var setupTimeout = 10 * time.Second
 type tunnelUpdate struct {
 	claim Claim
 	err   error
+	event *Event
 }
 
 type liveTunnel struct {
 	session  *yamux.Session
 	terminal <-chan error
+	events   <-chan Event
 }
 
 func startTunnel(ctx context.Context, client *Client, paths []string, to int) (Claim, <-chan tunnelUpdate, context.CancelFunc, error) {
@@ -72,6 +75,14 @@ func reconnectLoop(
 		case <-ctx.Done():
 			_ = current.session.Close()
 			return
+		case event := <-current.events:
+			select {
+			case reconnects <- tunnelUpdate{event: &event}:
+			case <-ctx.Done():
+				_ = current.session.Close()
+				return
+			}
+			continue
 		case <-current.session.CloseChan():
 		}
 		select {
@@ -193,8 +204,9 @@ func dialTunnel(
 	}
 	_ = conn.SetDeadline(time.Time{})
 	terminal := make(chan error, 1)
-	go acceptStreams(session, to, terminal)
-	return &liveTunnel{session: session, terminal: terminal}, claim, nil
+	events := make(chan Event, 16)
+	go acceptStreams(session, to, terminal, events)
+	return &liveTunnel{session: session, terminal: terminal, events: events}, claim, nil
 }
 
 func completeClientSetup(session *yamux.Session) error {
@@ -242,7 +254,7 @@ func yamuxConfig() *yamux.Config {
 	return config
 }
 
-func acceptStreams(session *yamux.Session, to int, terminal chan<- error) {
+func acceptStreams(session *yamux.Session, to int, terminal chan<- error, events chan<- Event) {
 	for {
 		stream, err := session.Accept()
 		if err != nil {
@@ -255,7 +267,7 @@ func acceptStreams(session *yamux.Session, to int, terminal chan<- error) {
 		}
 		switch kind[0] {
 		case streamRequest:
-			go forwardLocal(stream, to)
+			go forwardLocal(stream, to, events)
 		case streamRelease:
 			if _, err = stream.Write([]byte{streamAck}); err == nil {
 				terminal <- &APIError{
@@ -273,9 +285,14 @@ func acceptStreams(session *yamux.Session, to int, terminal chan<- error) {
 	}
 }
 
-func forwardLocal(stream net.Conn, to int) {
-	local, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(to)), time.Second)
+func forwardLocal(stream net.Conn, to int, events chan<- Event) {
+	target := net.JoinHostPort("127.0.0.1", strconv.Itoa(to))
+	local, err := net.DialTimeout("tcp", target, time.Second)
 	if err != nil {
+		select {
+		case events <- Event{Type: EventLocalTargetError, Err: fmt.Errorf("dial %s: %w", target, err)}:
+		default:
+		}
 		_ = stream.Close()
 		return
 	}

@@ -24,8 +24,11 @@ if err != nil {
 defer session.Close()
 
 for event := range session.Events() {
-    if event.Type == tunnelclient.EventTunnelReconnected {
+    switch event.Type {
+    case tunnelclient.EventTunnelReconnected:
         log.Printf("reconnected as %s", event.Claim.ID)
+    case tunnelclient.EventLocalTargetError:
+        log.Printf("local target unavailable: %v", event.Err)
     }
 }
 return session.Err()
@@ -35,6 +38,9 @@ return session.Err()
 routable. It accepts 1–8 paths, each at most 512 bytes. The session owns both
 until `Close` or context cancellation. A
 reconnect receives a new claim ID, available through `session.Claim()`.
+If a dispatched request cannot connect to the local port, the gateway returns
+`502 claimed tunnel target unavailable` and the session emits the best-effort
+`EventLocalTargetError`; the claim remains connected.
 
 `Config` supports `Gateway`, `Token`, `DefaultScheme`, `Insecure`, and a custom
 `HTTPClient`. Gateway must be a host or URL without a path; the package appends

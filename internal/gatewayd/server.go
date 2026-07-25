@@ -16,10 +16,11 @@ type Token struct {
 }
 
 type Server struct {
-	Store    registry.Store
-	Tokens   map[string]Token
-	Tunnel   *Tunnel
-	FailOpen http.Handler
+	Store            registry.Store
+	Tokens           map[string]Token
+	Tunnel           *Tunnel
+	FailOpen         http.Handler
+	DisableClaimList bool
 }
 
 type principal struct {
@@ -96,6 +97,10 @@ func (s *Server) release(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) list(w http.ResponseWriter, r *http.Request) {
+	if s.DisableClaimList {
+		http.NotFound(w, r)
+		return
+	}
 	if _, ok := s.auth(r); !ok {
 		errj(w, http.StatusUnauthorized, "unauthorized", "valid bearer token required")
 		return

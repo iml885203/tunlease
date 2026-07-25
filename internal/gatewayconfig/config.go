@@ -14,11 +14,13 @@ type Token struct {
 // Config intentionally exposes only the supported v1 deployment: one
 // whole-host gateway, an in-memory active-tunnel registry, and one origin.
 type Config struct {
-	Listen      string   `yaml:"listen"`
-	MaxClaims   int      `yaml:"max_claims"`
-	Whitelist   []string `yaml:"whitelist"`
-	Tokens      []Token  `yaml:"tokens"`
-	FailOpenURL string   `yaml:"fail_open_url"`
+	Listen           string   `yaml:"listen"`
+	MaxClaims        int      `yaml:"max_claims"`
+	Whitelist        []string `yaml:"whitelist"`
+	Tokens           []Token  `yaml:"tokens"`
+	FailOpenURL      string   `yaml:"fail_open_url"`
+	UnclaimedStatus  int      `yaml:"unclaimed_status"`
+	DisableClaimList bool     `yaml:"disable_claim_list"`
 }
 
 func (c *Config) Defaults() {
@@ -49,8 +51,17 @@ func (c Config) Validate() error {
 			return errors.New("each whitelist prefix must start and end with / and contain no wildcard")
 		}
 	}
-	if c.FailOpenURL == "" {
-		return errors.New("fail_open_url is required")
+	if c.FailOpenURL != "" && c.UnclaimedStatus != 0 {
+		return errors.New("fail_open_url and unclaimed_status are mutually exclusive")
+	}
+	if c.FailOpenURL == "" && c.UnclaimedStatus == 0 {
+		return errors.New("fail_open_url or unclaimed_status is required")
+	}
+	if c.UnclaimedStatus != 0 {
+		if c.UnclaimedStatus < 400 || c.UnclaimedStatus > 599 {
+			return errors.New("unclaimed_status must be between 400 and 599")
+		}
+		return nil
 	}
 	origin, err := url.Parse(c.FailOpenURL)
 	if err != nil || (origin.Scheme != "http" && origin.Scheme != "https") || origin.Host == "" {

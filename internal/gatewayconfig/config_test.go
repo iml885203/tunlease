@@ -13,12 +13,23 @@ func TestDefaultsAndValidation(t *testing.T) {
 	}
 }
 
-func TestOriginIsRequired(t *testing.T) {
+func TestUnclaimedTargetIsRequired(t *testing.T) {
 	for _, origin := range []string{"", "redis://app", "not a url"} {
 		config := Config{MaxClaims: 64, FailOpenURL: origin}
 		if err := config.Validate(); err == nil {
 			t.Fatalf("FailOpenURL %q passed validation", origin)
 		}
+	}
+	if err := (Config{MaxClaims: 64, UnclaimedStatus: 404}).Validate(); err != nil {
+		t.Fatalf("unclaimed status: %v", err)
+	}
+	for _, status := range []int{200, 399, 600} {
+		if err := (Config{MaxClaims: 64, UnclaimedStatus: status}).Validate(); err == nil {
+			t.Fatalf("unclaimed status %d passed validation", status)
+		}
+	}
+	if err := (Config{MaxClaims: 64, FailOpenURL: "http://app", UnclaimedStatus: 404}).Validate(); err == nil {
+		t.Fatal("both unclaimed targets passed validation")
 	}
 }
 

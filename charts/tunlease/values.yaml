@@ -22,6 +22,11 @@ config:
   # Required origin for every request without a connected matching tunnel.
   # Replace this example with the original app's cluster-internal URL.
   failOpenURL: http://callback-app.default.svc
+  # Public relays without an original app may clear failOpenURL and return an
+  # error status for unclaimed requests instead (for example, 404).
+  unclaimedStatus: 0
+  # Hide claim metadata while retaining release by an already-known claim ID.
+  disableClaimList: false
   maxClaims: 64
   # Path allowlist (opt-in): an empty list allows any path. The prefixes below
   # are an example — set the ones that cover your callbacks, or clear the list

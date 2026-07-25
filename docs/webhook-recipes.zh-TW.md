@@ -11,7 +11,7 @@ Tunlease 會保留 provider 既有的 callback URL。請把下列 path 與 port
 `https://callbacks.staging.example.com/webhooks/stripe/events`：
 
 ```bash
-tunle claim /webhooks/stripe/* --to 8080
+tunle claim '/webhooks/stripe/*' --to 8080
 ```
 
 請保持 Stripe signature verification 啟用，並使用此 staging endpoint
@@ -23,7 +23,7 @@ tunle claim /webhooks/stripe/* --to 8080
 `https://callbacks.staging.example.com/webhooks/github`：
 
 ```bash
-tunle claim /webhooks/github/* --to 3000
+tunle claim '/webhooks/github/*' --to 3000
 ```
 
 請在本機設定 webhook secret。GitHub 可從 webhook delivery 頁面重新傳送
@@ -35,7 +35,7 @@ tunle claim /webhooks/github/* --to 3000
 `https://callbacks.staging.example.com/webhooks/slack/events`：
 
 ```bash
-tunle claim /webhooks/slack/* --to 4000
+tunle claim '/webhooks/slack/*' --to 4000
 ```
 
 Local handler 仍須驗證 Slack signatures 並回應 URL verification
@@ -47,7 +47,7 @@ challenges。
 `https://callbacks.staging.example.com/oauth/provider/callback`：
 
 ```bash
-tunle claim /oauth/provider/callback/* --to 8080
+tunle claim '/oauth/provider/callback/*' --to 8080
 ```
 
 Tunnel 連線後再啟動新的 authorization flow，並持續驗證 OAuth `state`；

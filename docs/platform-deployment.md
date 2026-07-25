@@ -16,8 +16,10 @@ Before rollout, verify:
 - the public host has trusted TLS;
 - the origin still serves every unclaimed path.
 
-The gateway refuses to start without an HTTP(S) origin. It supports one replica
-only; active sessions are in memory and process-local.
+The gateway refuses to start unless exactly one unclaimed-request target is
+configured: an HTTP(S) `fail_open_url`, or an `unclaimed_status` error between
+400 and 599 for a relay without an original app. It supports one replica only;
+active sessions are in memory and process-local.
 
 ## Helm
 
@@ -48,14 +50,16 @@ helm upgrade --install tunlease charts/tunlease \
 Override `image.repository` and `image.tag` only when using your own build or
 release mirror.
 
-The gateway YAML has only five fields: `listen`, required `fail_open_url`,
-`max_claims`, `whitelist`, and `tokens`. Unknown fields fail startup so removed
-configuration cannot be silently ignored. `/_tunlease` and one replica are
-fixed, not values.
+The gateway YAML fields are `listen`, one of `fail_open_url` or
+`unclaimed_status`, `disable_claim_list`, `max_claims`, `whitelist`, and
+`tokens`. Unknown fields fail startup so removed configuration cannot be
+silently ignored. `/_tunlease` and one replica are fixed, not values.
 
 Empty `whitelist` permits every valid path. Empty tokens disable authentication;
 all clients then share the `anonymous` owner and can list or release each
-other's tunnels. Use one secret token per owner outside a trusted network.
+other's tunnels. Set `disable_claim_list: true` on an anonymous public demo to
+hide claim IDs while retaining release by an ID already recorded by the client.
+Use one secret token per owner for a non-demo gateway outside a trusted network.
 
 ## Verify and operate
 

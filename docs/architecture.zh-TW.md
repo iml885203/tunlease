@@ -5,7 +5,8 @@
 Tunlease 只有四個核心概念：
 
 - **Gateway**：位於單一 app 前方的 whole-host proxy。
-- **Origin**：原始 app，由 `fail_open_url` 指定。
+- **Unclaimed target**：由 `fail_open_url` 指定的原始 app，或由
+  `unclaimed_status` 指定的固定錯誤。
 - **Tunnel session**：開發者的一條 WSS 長連線。
 - **Claimed paths**：該連線互斥擁有的 path prefix。
 
@@ -15,8 +16,8 @@ Tunlease 只有四個核心概念：
 ## Topology 與 URL
 
 既有 callback host 的 `/` 必須送到 gateway。`/_tunlease` 固定保留給 health、
-list/release 與 tunnel WebSocket；其餘都是 data traffic。Origin 必須使用不會
-繞回 public gateway 的獨立內部 URL。
+list/release 與 tunnel WebSocket；其餘都是 data traffic。若有設定 origin，
+它必須使用不會繞回 public gateway 的獨立內部 URL。
 
 ```mermaid
 flowchart LR
@@ -52,9 +53,9 @@ timeout 的 ready/ack；未完成的連線會釋放 paths。`Start` 只會在 da
 | 狀態 | 結果 |
 |---|---|
 | Path 符合 connected session | 經 yamux 送 localhost |
-| 沒有符合的 connected session | Proxy 到 origin |
-| Dispatch 後 tunnel/local 失敗 | 回錯誤；不 replay |
-| Gateway 或 origin unavailable | 平台 outage |
+| 沒有符合的 connected session | Proxy 到 origin，或回設定的固定錯誤 |
+| Dispatch 後 tunnel/local 失敗 | 回 `502 claimed tunnel target unavailable`；不 replay |
+| Gateway 或設定的 origin unavailable | 平台 outage |
 
 Path 必須以 `/` 開頭、`/*` 結尾，且不可有其他 `*`；每條最多 512 bytes，
 一個 session 最多 8 條，重疊 prefix 互斥。

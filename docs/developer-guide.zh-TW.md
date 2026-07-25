@@ -26,7 +26,7 @@ service，再執行：
 ```bash
 export TUNLEASE_GATEWAY=callbacks.staging.example.com
 export TUNLEASE_TOKEN=YOUR_TOKEN
-tunle claim /webhooks/provider/callback/* --to 8080
+tunle claim '/webhooks/provider/callback/*' --to 8080
 ```
 
 Gateway URL 只填 host；client 會加入固定的 `/_tunlease`。預設使用 HTTPS，
@@ -46,13 +46,16 @@ Stripe、GitHub、Slack 與 OAuth 範例請見
 ## Lifecycle
 
 `claim` 成功代表 path ownership 與 data tunnel 都已 ready。Foreground
+CLI 會在 claim 前探測本機 port；port 尚未接受連線時會顯示 warning，但不阻止
+claim，讓本機 service 可以稍後啟動。連線期間每次本機連線失敗都會印在
+foreground，或寫入 detached claim log。
 process 擁有兩者：Ctrl+C 或連線結束會立即釋放。暫時斷網時會自動重連；
 claim ID 會改變，空窗期間 request 走 origin。
 
 ```bash
 tunle list
 tunle list --all
-tunle release /webhooks/provider/callback/*
+tunle release '/webhooks/provider/callback/*'
 tunle release --to 8080
 ```
 
@@ -70,6 +73,9 @@ credential 與個資。Local handler 必須 idempotent：provider retry 或 disp
 - **`path_not_allowed`**：請平台團隊提供 allowlisted prefix。
 - **`claim_limit_reached`**：gateway 已達 `max_claims`。
 - **Request 到 origin**：確認 claim process 已連線、path 相符、本機 port 可回 HTTP。
+- **`502 claimed tunnel target unavailable`**：path 已被 claim，但 client 無法連到
+  設定的 localhost port。啟動本機 service，並檢查 foreground output 或
+  `~/.tunlease/claim-PORT.log`。
 - **TLS error**：安裝 internal CA；`--insecure` 只作可信網路的暫時診斷。
 - **Gateway path 被拒絕**：只傳 host 或 origin URL，不要附 `/_tunlease`。
 

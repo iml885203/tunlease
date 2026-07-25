@@ -16,8 +16,9 @@ Rollout 前確認：
 - public host 有可信 TLS；
 - 所有 unclaimed path 仍由 origin 正常處理。
 
-沒有 HTTP(S) origin 時 gateway 會拒絕啟動。只支援一個 replica；active
-session 位於 process memory。
+Gateway 必須設定且只能設定一種未 claim request target，否則會拒絕啟動：
+HTTP(S) `fail_open_url`，或供沒有原始 app 的 relay 使用、介於 400–599 的
+`unclaimed_status`。只支援一個 replica；active session 位於 process memory。
 
 ## Helm
 
@@ -48,13 +49,15 @@ helm upgrade --install tunlease charts/tunlease \
 只有使用自己的 build 或 release mirror 時才覆寫 `image.repository` 與
 `image.tag`。
 
-Gateway YAML 只有 `listen`、必填 `fail_open_url`、`max_claims`、`whitelist`
-與 `tokens`。未知欄位會讓啟動失敗，避免舊設定被靜默忽略。`/_tunlease`
-與單一 replica 是固定條件，不是 values。
+Gateway YAML 欄位為 `listen`、`fail_open_url` 或 `unclaimed_status` 其中之一、
+`disable_claim_list`、`max_claims`、`whitelist` 與 `tokens`。未知欄位會讓啟動
+失敗，避免舊設定被靜默忽略。`/_tunlease` 與單一 replica 是固定條件，不是
+values。
 
 空 whitelist 允許所有合法 path。空 tokens 會停用認證；所有 client 共用
-`anonymous` owner，可互相 list 或 release tunnel。可信網路外應為每位 owner
-設定獨立 secret token。
+`anonymous` owner，可互相 list 或 release tunnel。匿名 public demo 可設
+`disable_claim_list: true` 隱藏 claim ID，同時保留 client 以已記錄 ID 進行
+release；可信網路外且不是 demo 時，應為每位 owner 設定獨立 secret token。
 
 ## 驗證與操作
 

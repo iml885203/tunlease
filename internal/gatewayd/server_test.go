@@ -85,3 +85,19 @@ func TestUnclaimedTrafficUsesOrigin(t *testing.T) {
 		t.Fatalf("origin code=%d", code)
 	}
 }
+
+func TestClaimListCanBeDisabledWithoutDisablingRelease(t *testing.T) {
+	server, store := testServer(nil)
+	server.DisableClaimList = true
+	claim, err := store.Create("anonymous", []string{"/ok/a/*"}, "localhost:1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if code, _ := request(server, http.MethodGet, ControlPrefix+"/api/v1/claims", ""); code != http.StatusNotFound {
+		t.Fatalf("list code=%d", code)
+	}
+	if code, _ := request(server, http.MethodDelete, ControlPrefix+"/api/v1/claims/"+claim.ID, ""); code != http.StatusNotFound {
+		t.Fatalf("release without live session code=%d", code)
+	}
+}

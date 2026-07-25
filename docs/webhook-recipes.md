@@ -12,7 +12,7 @@ If the existing endpoint is
 `https://callbacks.staging.example.com/webhooks/stripe/events`:
 
 ```bash
-tunle claim /webhooks/stripe/* --to 8080
+tunle claim '/webhooks/stripe/*' --to 8080
 ```
 
 Keep Stripe signature verification enabled and use the signing secret for this
@@ -24,7 +24,7 @@ If the repository or organization webhook already targets
 `https://callbacks.staging.example.com/webhooks/github`:
 
 ```bash
-tunle claim /webhooks/github/* --to 3000
+tunle claim '/webhooks/github/*' --to 3000
 ```
 
 Keep the webhook secret configured locally. GitHub can redeliver an earlier
@@ -36,7 +36,7 @@ For an existing Slack request URL such as
 `https://callbacks.staging.example.com/webhooks/slack/events`:
 
 ```bash
-tunle claim /webhooks/slack/* --to 4000
+tunle claim '/webhooks/slack/*' --to 4000
 ```
 
 Your local handler must still verify Slack signatures and answer URL
@@ -48,7 +48,7 @@ For an existing callback such as
 `https://callbacks.staging.example.com/oauth/provider/callback`:
 
 ```bash
-tunle claim /oauth/provider/callback/* --to 8080
+tunle claim '/oauth/provider/callback/*' --to 8080
 ```
 
 Start a fresh authorization flow after the tunnel connects. Keep validating

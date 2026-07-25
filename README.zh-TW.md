@@ -6,7 +6,7 @@
 照常打到真正的 app。Ctrl+C 釋放。
 
 ```bash
-tunle claim /webhooks/stripe/* --to 8080 --gateway staging.myapp.com
+tunle claim '/webhooks/stripe/*' --to 8080 --gateway staging.myapp.com
 ```
 
 ![claim 前固定 callback URL 回 app 的 404，`tunle claim` 後同一 URL 打到本機服務](assets/demo.gif)
@@ -82,7 +82,7 @@ irm https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/install.ps
 接著 claim callback path：
 
 ```bash
-tunle claim /webhooks/provider/callback/* --to 8080 --gateway myapp.example.com
+tunle claim '/webhooks/provider/callback/*' --to 8080 --gateway myapp.example.com
 ```
 
 Ctrl+C 釋放。預設使用 HTTPS；只有 gateway 沒有 TLS（例如 localhost）才明確填
@@ -106,8 +106,8 @@ Installer 會在更換 binary 前驗證發布的 SHA-256 checksum。
 
 Gateway 位於 app 前面，並包辦 server 端所有事情。它把 control plane 放在
 固定的 `/_tunlease` 底下；其餘 path 都是第三方流量——符合 claim
-時 tunnel 給開發者，否則 proxy 回必填的 `fail_open_url`（原始 app）。
-沒有獨立的 sidecar process。
+時 tunnel 給開發者，否則 proxy 回 `fail_open_url`（原始 app）；沒有原始 app
+的 public demo relay 也可以改回設定的固定錯誤。沒有獨立的 sidecar process。
 
 - **任何環境、單一 app origin** — 跑 `tunle gateway`，把 `fail_open_url` 指向 app 的 Service，並將
   gateway 部署在 app 前面（Ingress → gateway）。這是 Helm chart 部署的模型。

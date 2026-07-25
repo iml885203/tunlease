@@ -24,8 +24,11 @@ if err != nil {
 defer session.Close()
 
 for event := range session.Events() {
-    if event.Type == tunnelclient.EventTunnelReconnected {
+    switch event.Type {
+    case tunnelclient.EventTunnelReconnected:
         log.Printf("reconnected as %s", event.Claim.ID)
+    case tunnelclient.EventLocalTargetError:
+        log.Printf("local target unavailable: %v", event.Err)
     }
 }
 return session.Err()
@@ -35,6 +38,9 @@ return session.Err()
 條 path，每條最多 512 bytes。Session 持有兩者，直到 `Close` 或 context
 cancellation。重連會取得新 claim ID，
 可由 `session.Claim()` 讀取。
+Dispatch 後若無法連到 local port，gateway 會回
+`502 claimed tunnel target unavailable`，session 也會送出 best-effort
+`EventLocalTargetError`；claim 會保持 connected。
 
 `Config` 支援 `Gateway`、`Token`、`DefaultScheme`、`Insecure` 與 custom
 `HTTPClient`。Gateway 必須是無 path 的 host 或 URL；package 會加入固定

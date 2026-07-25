@@ -26,7 +26,7 @@ personal token. Start the local service, then:
 ```bash
 export TUNLEASE_GATEWAY=callbacks.staging.example.com
 export TUNLEASE_TOKEN=YOUR_TOKEN
-tunle claim /webhooks/provider/callback/* --to 8080
+tunle claim '/webhooks/provider/callback/*' --to 8080
 ```
 
 The gateway URL is the bare host; the client adds fixed `/_tunlease`. HTTPS is
@@ -47,6 +47,10 @@ OAuth examples.
 ## Lifecycle
 
 A successful `claim` means path ownership and the data tunnel are both ready.
+Before claiming, the CLI probes the local port. An unavailable port emits a
+warning but does not block the claim, so the local service may start afterward.
+While connected, each failed local connection is printed in the foreground or
+written to the detached claim log.
 The foreground process owns them: Ctrl+C or connection close releases them
 immediately. On transient network loss it reconnects automatically; the claim
 ID changes and requests use the origin during the gap.
@@ -54,7 +58,7 @@ ID changes and requests use the origin during the gap.
 ```bash
 tunle list
 tunle list --all
-tunle release /webhooks/provider/callback/*
+tunle release '/webhooks/provider/callback/*'
 tunle release --to 8080
 ```
 
@@ -74,6 +78,9 @@ or a tunnel failure after dispatch can duplicate delivery.
 - **`claim_limit_reached`** — the gateway reached `max_claims`.
 - **Origin receives the request** — confirm the claim process is connected,
   the path matches, and the local port accepts HTTP.
+- **`502 claimed tunnel target unavailable`** — the path is claimed, but the
+  client could not connect to the configured localhost port. Start the local
+  service and inspect the foreground output or `~/.tunlease/claim-PORT.log`.
 - **TLS error** — install the internal CA; use `--insecure` only as a temporary
   trusted-network diagnostic.
 - **Gateway path rejected** — pass only a host or origin URL, without

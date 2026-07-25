@@ -275,6 +275,9 @@ func (t *Tunnel) ProxyByPath(w http.ResponseWriter, r *http.Request) bool {
 			IdleConnTimeout:    5 * time.Second,
 			DisableCompression: true,
 		},
+		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, _ error) {
+			http.Error(w, "claimed tunnel target unavailable", http.StatusBadGateway)
+		},
 	}
 	proxy.ServeHTTP(w, r)
 	return true

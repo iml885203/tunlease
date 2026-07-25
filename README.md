@@ -6,7 +6,7 @@ Claim one path on an existing fixed endpoint; its live traffic reaches your
 laptop while every other path keeps serving the real app. Ctrl+C to release.
 
 ```bash
-tunle claim /webhooks/stripe/* --to 8080 --gateway staging.myapp.com
+tunle claim '/webhooks/stripe/*' --to 8080 --gateway staging.myapp.com
 ```
 
 ![A fixed callback URL returns the app's 404 until you claim its path, then reaches a server on your laptop — on the same URL](assets/demo.gif)
@@ -87,7 +87,7 @@ irm https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/install.ps
 Then claim the callback path:
 
 ```bash
-tunle claim /webhooks/provider/callback/* --to 8080 --gateway myapp.example.com
+tunle claim '/webhooks/provider/callback/*' --to 8080 --gateway myapp.example.com
 ```
 
 Ctrl+C releases it. HTTPS is the default; use an explicit `http://` only for a
@@ -115,8 +115,9 @@ It is all one `tunle` binary; a subcommand selects the role:
 The gateway sits in front of the app and does everything on the server side. It
 serves its control plane under the fixed `/_tunlease` prefix; every
 other path is third-party traffic — tunnelled to the developer when a claim
-matches, otherwise proxied to the required `fail_open_url` (the original app).
-There is no separate sidecar process.
+matches, otherwise proxied to `fail_open_url` (the original app). A public demo
+relay without an original app may return a configured error instead. There is
+no separate sidecar process.
 
 - **Any host, one app origin** — run `tunle gateway` with `fail_open_url` pointed at the
   app's Service and deploy it in front of the app (Ingress → gateway). This is
