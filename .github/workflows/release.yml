@@ -96,7 +96,9 @@ jobs:
   publish-images:
     needs: tag
     permissions:
-      contents: read
+      # Reusable workflow permissions are validated for every nested job,
+      # including the target-filtered release job.
+      contents: write
       packages: write
     uses: ./.github/workflows/publish.yml
     with:
