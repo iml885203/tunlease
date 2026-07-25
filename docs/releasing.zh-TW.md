@@ -31,7 +31,7 @@ docker pull "ghcr.io/iml885203/tunlease-gateway:$VERSION"
 ## 更新 Homebrew tap
 
 Tap 每六小時檢查最新 GitHub Release，並建立 formula update pull request。
-另一個 workflow 只會在 macOS 與 Linux tests 都通過後 merge 該 PR。
+Updater 會等待 macOS 與 Linux tests，且只在兩者都通過後 merge 該 PR。
 
 若 automation 無法使用，請在 GitHub Release 成功後手動更新：
 
@@ -72,7 +72,7 @@ Tap 會從 source build，不依賴預先編譯的 release binaries。
 
 `iml885203/scoop-bucket` repository 每六小時檢查最新 release 並建立
 manifest update pull request。其 Windows workflow 會透過 Scoop 安裝
-manifest 並執行 CLI；另一個 workflow 只會在該 test 成功後 merge PR。
+manifest 並執行 CLI；updater 會等待，且只在該 test 成功後 merge PR。
 
 Manifest 使用 release workflow 發布的 Windows binary 與 SHA-256 file。
 若 automation 無法使用，須一起更新 `version`、download URL 與 hash。

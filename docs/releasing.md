@@ -34,8 +34,8 @@ instead.
 ## Update the Homebrew tap
 
 The tap checks the latest GitHub Release every six hours and opens a formula
-update pull request. A separate workflow merges that PR only after its macOS
-and Linux tests pass.
+update pull request. The updater waits for its macOS and Linux tests and merges
+the PR only after both pass.
 
 If automation is unavailable, update it manually after the GitHub Release
 succeeds:
@@ -79,7 +79,7 @@ binaries.
 
 The `iml885203/scoop-bucket` repository checks the latest release every six
 hours and opens a manifest update pull request. Its Windows workflow installs
-the manifest with Scoop and runs the CLI; a separate workflow merges the PR
+the manifest with Scoop and runs the CLI; the updater waits and merges the PR
 only after that test succeeds.
 
 The manifest uses the Windows binary and SHA-256 file published by the release
