@@ -47,13 +47,15 @@ jobs:
             --arg source_repository "$GITHUB_REPOSITORY" \
             --arg source_sha "$GITHUB_SHA" \
             --arg source_run_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --arg deployment_id "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
             '{
               event_type: "tunlease-release",
               client_payload: {
                 version: $version,
                 source_repository: $source_repository,
                 source_sha: $source_sha,
-                source_run_url: $source_run_url
+                source_run_url: $source_run_url,
+                deployment_id: $deployment_id
               }
             }' >"$RUNNER_TEMP/public-relay-dispatch.json"
           gh api \
@@ -66,12 +68,14 @@ jobs:
           GH_TOKEN: ${{ secrets.PUBLIC_RELAY_INFRA_TOKEN }}
           VERSION: ${{ inputs.version }}
         run: |
+          deployment_id="$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          expected_title="Deploy public relay $VERSION ($deployment_id)"
           run_id=
           for _ in $(seq 1 60); do
             run_id=$(
               gh api \
                 "repos/iml885203/tunlease-public-relay-infra/actions/workflows/deploy.yml/runs?event=repository_dispatch&per_page=20" \
-                --jq ".workflow_runs[] | select(.display_title == \"Deploy public relay $VERSION\") | .id" |
+                --jq ".workflow_runs[] | select(.display_title == \"$expected_title\") | .id" |
                 head -n 1
             )
             [ -n "$run_id" ] && break
