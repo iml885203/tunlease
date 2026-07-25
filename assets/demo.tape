@@ -16,10 +16,11 @@ Set Height 240
 Set Padding 20
 Set Theme "Catppuccin Mocha"
 Set TypingSpeed 45ms
+Env NO_COLOR ""
+Env TERM "xterm-256color"
+Env FORCE_COLOR "1"
 
 Sleep 500ms
 Type "tul claim '/demo/testing/my-first-tunnel/' -p 8080 -g tunlease.dotw.me"
 Enter
-Sleep 4s
-Ctrl+C
-Sleep 1s
+Sleep 8s

@@ -27,7 +27,8 @@ Interactive terminals use color to distinguish successful lifecycle events,
 connection state, warnings, errors, and HTTP status classes. Command behavior,
 exit status, and stdout/stderr destinations remain unchanged. Color is disabled
 automatically for pipes, redirected output, and detached claim logs. Set
-`NO_COLOR=1` to disable it explicitly. Top-level errors are printed once.
+`FORCE_COLOR=1` to preserve color in a terminal recorder, or `NO_COLOR=1` to
+disable it explicitly. Top-level errors are printed once.
 Gateway errors include their stable error code and one recovery action when
 there is a clear next step.
 

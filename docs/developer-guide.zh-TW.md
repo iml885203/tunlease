@@ -26,7 +26,8 @@ Homebrew 會安裝 bash、zsh 與 fish shell completions。CLI 也可透過
 互動式 terminal 會用顏色區分成功的 lifecycle event、連線狀態、warning、
 error 與各類 HTTP status；command 行為、exit status 及 stdout/stderr 目的地
 維持不變。Pipe、redirect output 與 detached claim log 會自動停用顏色，也可
-設定 `NO_COLOR=1` 明確停用。Top-level error 只會印一次。Gateway error
+設定 `FORCE_COLOR=1` 在 terminal recorder 保留顏色，或用 `NO_COLOR=1`
+明確停用。Top-level error 只會印一次。Gateway error
 會包含穩定的 error code；若有明確下一步，也會附上一個 recovery action。
 
 Automation 可在 client command 使用 `--output json`（`-o json`）。`list`

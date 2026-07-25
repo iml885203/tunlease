@@ -63,6 +63,9 @@ func supportsColor(w io.Writer) bool {
 	if !colorPermitted() {
 		return false
 	}
+	if forceColor := os.Getenv("FORCE_COLOR"); forceColor != "" && forceColor != "0" {
+		return true
+	}
 	f, ok := w.(*os.File)
 	if !ok {
 		return false

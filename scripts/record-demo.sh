@@ -50,6 +50,7 @@ echo "Public relay reachable at https://$DOMAIN — recording…"
 # because the claim command needs a moment to finish its WebSocket handshake.
 VERIFY_RESULT="$TMP/relay-verified"
 (
+  sleep 7
   for _ in $(seq 1 30); do
     if curl -fsS "https://$DOMAIN$DEMO_PATH" |
       grep -q "hello from my laptop"; then

@@ -164,3 +164,17 @@ func TestNormalTerminalPermitsColor(t *testing.T) {
 		t.Fatal("normal terminal environment disabled color")
 	}
 }
+
+func TestForceColorForNonTTYOutput(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+	t.Setenv("TERM", "xterm-256color")
+	t.Setenv("FORCE_COLOR", "1")
+	if !supportsColor(&bytes.Buffer{}) {
+		t.Fatal("FORCE_COLOR did not enable color for non-TTY output")
+	}
+
+	t.Setenv("NO_COLOR", "1")
+	if supportsColor(&bytes.Buffer{}) {
+		t.Fatal("NO_COLOR did not override FORCE_COLOR")
+	}
+}
