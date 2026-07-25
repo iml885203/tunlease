@@ -88,7 +88,7 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 				paths = append(paths, n)
 			}
 			if e := checkLocalTarget(to); e != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: localhost:%d is not accepting connections yet; claimed requests will return 502 until it starts\n", to)
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: localhost:%d is not accepting connections yet; claimed requests will return 502 until it starts\n", to)
 			}
 			if detach {
 				// Non-blocking: spawn a background daemon and return once the
@@ -196,7 +196,8 @@ func runClaim(c *tunnelclient.Client, paths []string, to int, daemon bool) error
 				}
 				return nil
 			}
-			if event.Type == tunnelclient.EventTunnelReconnected {
+			switch event.Type {
+			case tunnelclient.EventTunnelReconnected:
 				fmt.Println("tunnel reconnected")
 				previous := cl
 				cl = event.Claim
@@ -205,7 +206,7 @@ func runClaim(c *tunnelclient.Client, paths []string, to int, daemon bool) error
 				st.add(stateClaim{ClaimID: cl.ID, Gateway: c.Gateway(), Paths: cl.Paths, To: to, PID: pid})
 				saveState(st)
 				fmt.Printf("paths remain claimed as %s\n", shortID(cl.ID))
-			} else if event.Type == tunnelclient.EventLocalTargetError {
+			case tunnelclient.EventLocalTargetError:
 				fmt.Printf("WARNING: request could not reach localhost:%d: %v\n", to, event.Err)
 			}
 		}
