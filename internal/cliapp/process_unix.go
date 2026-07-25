@@ -19,12 +19,3 @@ func processAlive(pid int) bool {
 	}
 	return p.Signal(syscall.Signal(0)) == nil
 }
-
-func terminateProcess(pid int) {
-	if !processAlive(pid) {
-		return
-	}
-	if p, err := os.FindProcess(pid); err == nil {
-		_ = p.Signal(syscall.SIGTERM)
-	}
-}

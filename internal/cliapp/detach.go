@@ -113,11 +113,4 @@ func daemonLogPath(to int) string {
 	return filepath.Join(base, fmt.Sprintf("claim-%d.log", to))
 }
 
-// stopDaemon kills the background daemon holding a claim, if one is recorded.
-func stopDaemon(c stateClaim) {
-	if c.PID > 0 {
-		terminateProcess(c.PID)
-	}
-}
-
 func itoa(v int) string { return fmt.Sprintf("%d", v) }

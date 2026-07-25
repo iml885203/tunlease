@@ -54,10 +54,11 @@ field，但既有 field 的意義不變。Consumer 必須忽略未知 field 與 
 | `reconnected` | foreground `claim` stdout | `paths`, `target`, `local_port` | `expires_at` |
 | `local_error` | foreground `claim` stdout | `code`, `message`, `target`, `local_port` | — |
 | `request` | foreground `claim` stdout | `method`, `path`, `status`, `duration_ms` | — |
-| `released` | `claim` 或 `release` stdout | `paths` | `local_port` |
+| `expired` | foreground 或 detached `claim` stdout/log | `paths` | `expired_at` |
+| `released` | `claim` 或 `release` stdout | `paths` | `local_port`、`already_absent` |
 | `claim_list` | `list` stdout | `claims`；每筆 item 必有 `paths`、`owner`、`started_at`、`mine`、`status` | `mine: true` 的 item 有 `target` 與 `local_port`；finite claim 有 `expires_at` |
-| `release_summary` | `release --to` stdout | `released`, `failed`, `local_port`, `gateway` | — |
-| `error` | 失敗 command stderr | `code`, `message` | `action`；partial release 另含 `released`、`failed`、結構化 `failures`、`local_port` 與 `gateway` |
+| `release_summary` | `release` stdout | `released`、`failed`、`gateway`；`local_port` 或 `paths` 恰有一個 selector | `already_absent` |
+| `error` | 失敗 command stderr | `code`, `message` | `action`；partial release 另含 `released`、`already_absent`、`failed`、結構化 `failures`、`local_port` 與 `gateway` |
 
 `claim -d --output json` 會向 parent stdout 寫入一筆 `connected` record；
 `log_path` 是 child 的 JSONL log，child stdout 與 stderr 會合併到同一檔案。
@@ -107,6 +108,11 @@ Requests will appear below. Press Ctrl+C to stop forwarding and release the path
 
 Gateway 若限制 claim duration，第一行會包含 `until HH:MM:SS`。Detached claim
 使用相同的 route 與 deadline 表達，再顯示 log path 及 `tul release` command。
+到達已公告的 deadline 是成功的 lifecycle completion：CLI 會顯示
+`Claim expired …; tunnel closed.` 並以 exit 0 結束。Foreground claim 若由
+另一個 `tul release` 停止，也會顯示 `Claim released; tunnel closed.` 並
+exit 0。Go client 仍會透過 `Session.Err()` 暴露 `claim_expired` 與
+`claim_released` terminal reason。
 
 連線期間每次本機連線失敗都會印在 foreground，或寫入 detached claim log，
 並省略重複的底層 dial 細節。每個 forwarded request 也會顯示一行包含 method、
@@ -137,6 +143,15 @@ tul release --to 8080
 `release --to` 會嘗試該 port 上、屬於目前 gateway 的所有本機記錄 claim；
 每筆成功後立即保存 state。若後續項目失敗，command 會回報
 `partial_release` summary，並只留下失敗項目供安全重試。
+`release --to PORT` 是 idempotent，也涵蓋 stale local entry：gateway 回
+`claim_not_found` 時會清除 stale entry 並 exit 0。`release PATH` 遇到 stale
+state 或 list/delete race 時，也會視為 already absent。若記錄中的 tunnel process
+仍在執行，CLI 會改回 `release_pending` 並保留 state，避免把 reconnect 誤判為
+已完成 release。依 path release 會直接回此 code；`release --to` 則會把它列為
+`partial_release` 內的 failure。請重試相同 release command。若 local entry 已消失，
+且 gateway 禁用 claim list，CLI 無法探索或釋放未知 path；`list` 與依 path
+的 `release` 會回 `claim_list_unavailable`。請在建立 claim 的機器使用
+`release --to PORT` 管理本機記錄的 claim。
 
 `-d` 是 `--detach` 的 shorthand，會啟動背景 process。Automation 必須在
 cleanup 執行 `release`。
@@ -156,8 +171,12 @@ credential 與個資。Local handler 必須 idempotent：provider retry 或 disp
 - **`claim_limit_reached`**：gateway 已達 `max_claims`。
 - **`owner_claim_limit_reached`**：這個 client identity 已達
   `max_claims_per_owner`。
-- **`claim_expired`**：gateway 的 `max_claim_duration` 已終止 session 並釋放
-  paths。
+- **Claim expired**：gateway 公告的 `max_claim_duration` 已正常結束 session
+  並釋放 paths。
+- **`claim_list_unavailable`**：gateway 不提供 path lookup；請在建立 claim 的
+  機器使用 `release --to PORT`。
+- **`release_pending`**：tunnel process 正在 reconnect，尚無法確認 release；
+  請重試相同 release command。
 - **Request 到 origin**：確認 claim process 已連線、path 相符、本機 port 可回 HTTP。
 - **`502 This path is claimed, but its local service is unavailable.`**：path
   已被 claim，但 client 無法連到設定的 localhost port。公開 response 只引導

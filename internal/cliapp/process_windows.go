@@ -21,12 +21,3 @@ func processAlive(pid int) bool {
 	_ = syscall.CloseHandle(handle)
 	return true
 }
-
-func terminateProcess(pid int) {
-	handle, err := syscall.OpenProcess(syscall.PROCESS_TERMINATE, false, uint32(pid))
-	if err != nil {
-		return
-	}
-	defer func() { _ = syscall.CloseHandle(handle) }()
-	_ = syscall.TerminateProcess(handle, 1)
-}

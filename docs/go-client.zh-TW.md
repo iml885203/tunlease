@@ -50,6 +50,8 @@ context cancellation。重連會取得新 claim ID，
 Gateway 限制 claim duration 時，`session.Claim().ExpiresAt` 會包含 deadline；
 terminal expiry handshake 後，`session.Err()` 會回傳 code 為
 `claim_expired` 的 API error。
+Explicit remote release 同樣會回傳 `claim_released`。對 embedding application
+而言兩者都是 terminal reason；CLI 會把兩者視為成功的 lifecycle completion。
 Dispatch 後若無法連到 local port，gateway 會回
 `502 This path is claimed, but its local service is unavailable.`，只引導
 owner 查看 terminal，不暴露本機細節。Session 也會送出 best-effort

@@ -58,10 +58,11 @@ additively.
 | `reconnected` | foreground `claim` stdout | `paths`, `target`, `local_port` | `expires_at` |
 | `local_error` | foreground `claim` stdout | `code`, `message`, `target`, `local_port` | — |
 | `request` | foreground `claim` stdout | `method`, `path`, `status`, `duration_ms` | — |
-| `released` | `claim` or `release` stdout | `paths` | `local_port` |
+| `expired` | foreground or detached `claim` stdout/log | `paths` | `expired_at` |
+| `released` | `claim` or `release` stdout | `paths` | `local_port`, `already_absent` |
 | `claim_list` | `list` stdout | `claims`; every item has `paths`, `owner`, `started_at`, `mine`, `status` | items with `mine: true` have `target` and `local_port`; finite claims have `expires_at` |
-| `release_summary` | `release --to` stdout | `released`, `failed`, `local_port`, `gateway` | — |
-| `error` | failed command stderr | `code`, `message` | `action`; partial release also has `released`, `failed`, structured `failures`, `local_port`, and `gateway` |
+| `release_summary` | `release` stdout | `released`, `failed`, `gateway`; exactly one selector: `local_port` or `paths` | `already_absent` |
+| `error` | failed command stderr | `code`, `message` | `action`; partial release also has `released`, `already_absent`, `failed`, structured `failures`, `local_port`, and `gateway` |
 
 `claim -d --output json` writes one `connected` record to the parent stdout.
 Its `log_path` contains JSONL from the child; child stdout and stderr share that
@@ -114,6 +115,11 @@ Requests will appear below. Press Ctrl+C to stop forwarding and release the path
 Gateways with a finite claim duration include `until HH:MM:SS` in the first
 line. Detached claims use the same route and deadline wording, then show the log
 path and the `tul release` command.
+Reaching that advertised deadline is a successful lifecycle completion:
+the CLI prints `Claim expired …; tunnel closed.` and exits 0. Likewise, a
+foreground claim stopped by another `tul release` prints `Claim released;
+tunnel closed.` and exits 0. The Go client still exposes `claim_expired` and
+`claim_released` through `Session.Err()` as terminal reasons.
 
 While connected, each failed local connection is printed in the foreground or
 written to the detached claim log. Connection errors omit redundant dial
@@ -147,6 +153,17 @@ It shows local ports only for claims created by this machine.
 selected gateway. Each successful release is persisted immediately; if later
 releases fail, the command reports a `partial_release` summary and leaves only
 the failed entries for a safe retry.
+`release --to PORT` is idempotent, including stale local entries: a gateway
+`claim_not_found` response removes the stale entry and exits 0. `release PATH`
+also treats stale state and a list/delete race as already absent. If the recorded
+tunnel process is still alive, the CLI instead returns `release_pending`
+and retains its state so a reconnect cannot be mistaken for a completed release.
+Path release returns that code directly; `release --to` includes it as a
+failure inside `partial_release`. Retry the same release command. If the local
+entry is gone and the gateway disables claim listing, the CLI cannot discover
+or release an unknown path. `list` and path-based `release` return
+`claim_list_unavailable`; manage locally recorded claims with
+`release --to PORT` on the machine that created them.
 
 `-d` is shorthand for `--detach`; it starts a background process. Always use
 `release` in automation cleanup. Treat command exit status as the interface;
@@ -167,8 +184,12 @@ or a tunnel failure after dispatch can duplicate delivery.
 - **`claim_limit_reached`** — the gateway reached `max_claims`.
 - **`owner_claim_limit_reached`** — this client identity reached
   `max_claims_per_owner`.
-- **`claim_expired`** — the gateway's `max_claim_duration` ended the session
-  and released its paths.
+- **Claim expired** — the gateway's advertised `max_claim_duration` ended the
+  session and released its paths normally.
+- **`claim_list_unavailable`** — this gateway does not expose path lookup; use
+  `release --to PORT` on the machine that created the claim.
+- **`release_pending`** — a tunnel process is reconnecting, so release is
+  not confirmed yet; retry the same release command.
 - **Origin receives the request** — confirm the claim process is connected,
   the path matches, and the local port accepts HTTP.
 - **`502 This path is claimed, but its local service is unavailable.`** — the

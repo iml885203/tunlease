@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -215,7 +216,7 @@ func validateOutput(output string) error {
 	return nil
 }
 
-func runClaim(ui *console, c *tunnelclient.Client, paths []string, to int, daemon bool) error {
+func runClaim(ui *console, c *tunnelclient.Client, paths []string, to int, _ bool) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -224,10 +225,9 @@ func runClaim(ui *console, c *tunnelclient.Client, paths []string, to int, daemo
 		return e
 	}
 	cl := session.Claim()
-	pid := 0
-	if daemon {
-		pid = os.Getpid() // recorded so `tul release` can stop this daemon
-	}
+	// Record the holder for both foreground and detached sessions. Release uses
+	// this only as a conservative liveness check; it never signals the PID.
+	pid := os.Getpid()
 	st := loadState()
 	st.add(stateClaim{ClaimID: cl.ID, Gateway: c.Gateway(), Paths: cl.Paths, To: to, ExpiresAt: cl.ExpiresAt, PID: pid})
 	saveState(st)
@@ -247,16 +247,15 @@ func runClaim(ui *console, c *tunnelclient.Client, paths []string, to int, daemo
 		select {
 		case <-ctx.Done():
 			_ = session.Close()
-			if ui.json {
-				ui.event(map[string]any{"type": "released", "paths": cl.Paths})
-			} else {
-				ui.info("\nreleased, tunnel closed")
-			}
+			printStoppedTerminal(ui, cl.Paths)
 			return nil
 		case event, ok := <-session.Events():
 			if !ok {
 				if err := session.Err(); err != nil {
-					return err
+					return finishTerminalSession(ui, err, cl)
+				}
+				if ctx.Err() != nil {
+					printStoppedTerminal(ui, cl.Paths)
 				}
 				return nil
 			}
@@ -298,6 +297,70 @@ func runClaim(ui *console, c *tunnelclient.Client, paths []string, to int, daemo
 					ui.activity(event.Method, event.Path, event.Status, formatActivityDuration(event.Duration))
 				}
 			}
+		}
+	}
+}
+
+func printStoppedTerminal(ui *console, paths []string) {
+	if ui.json {
+		ui.event(map[string]any{"type": "released", "paths": paths})
+	} else {
+		ui.info("\nreleased, tunnel closed")
+	}
+}
+
+func finishTerminalSession(ui *console, err error, claim tunnelclient.Claim) error {
+	terminal, expected := expectedTerminalReason(err)
+	if !expected {
+		return err
+	}
+	printExpectedTerminal(ui, terminal, claim)
+	return nil
+}
+
+type expectedTerminal string
+
+const (
+	terminalExpired  expectedTerminal = "expired"
+	terminalReleased expectedTerminal = "released"
+)
+
+func expectedTerminalReason(err error) (expectedTerminal, bool) {
+	var apiErr *tunnelclient.APIError
+	if !errors.As(err, &apiErr) {
+		return "", false
+	}
+	switch apiErr.Code {
+	case "claim_expired":
+		return terminalExpired, true
+	case "claim_released":
+		return terminalReleased, true
+	default:
+		return "", false
+	}
+}
+
+func printExpectedTerminal(ui *console, terminal expectedTerminal, claim tunnelclient.Claim) {
+	switch terminal {
+	case terminalExpired:
+		if ui.json {
+			event := map[string]any{"type": "expired", "paths": claim.Paths}
+			if claim.ExpiresAt != nil {
+				event["expired_at"] = claim.ExpiresAt.Format(time.RFC3339Nano)
+			}
+			ui.event(event)
+			return
+		}
+		if claim.ExpiresAt != nil {
+			ui.info("Claim expired at %s; tunnel closed.", claim.ExpiresAt.Local().Format("15:04:05"))
+		} else {
+			ui.info("Claim expired; tunnel closed.")
+		}
+	case terminalReleased:
+		if ui.json {
+			ui.event(map[string]any{"type": "released", "paths": claim.Paths})
+		} else {
+			ui.info("Claim released; tunnel closed.")
 		}
 	}
 }
@@ -359,6 +422,9 @@ func runList(ui *console, ctx context.Context, c *tunnelclient.Client, all bool)
 	}
 	claims, e := c.List(ctx)
 	if e != nil {
+		if claimListUnavailable(e) {
+			return &claimListUnavailableError{}
+		}
 		return e
 	}
 	shown := 0
@@ -424,41 +490,52 @@ func runRelease(ui *console, ctx context.Context, c *tunnelclient.Client, args [
 	st := loadState()
 	if relTo > 0 {
 		released := 0
+		alreadyAbsent := 0
 		failures := make([]releaseFailure, 0)
 		// Iterate a snapshot because successful releases remove entries from st.
 		for _, s := range append([]stateClaim(nil), st.Claims...) {
 			if s.To == relTo && s.Gateway == c.Gateway() {
 				if e := c.Release(ctx, s.ClaimID); e != nil {
+					if claimAlreadyAbsent(e) {
+						if s.PID > 0 && processAlive(s.PID) {
+							failures = append(failures, releaseFailure{
+								Paths: s.Paths, Code: "release_pending",
+								Message: "tunnel process is still running while its claim reconnects",
+							})
+							continue
+						}
+						st.removeByID(s.ClaimID)
+						saveState(st)
+						printReleased(ui, s.Paths, relTo, true)
+						alreadyAbsent++
+						continue
+					}
 					code, message, _ := errorDetails(e)
 					failures = append(failures, releaseFailure{Paths: s.Paths, Code: code, Message: message})
 					continue
 				}
-				stopDaemon(s) // stop the background daemon, if this was --detach
 				st.removeByID(s.ClaimID)
 				// Persist each completed release so a later failure cannot
 				// resurrect stale local state.
 				saveState(st)
-				if ui.json {
-					ui.event(map[string]any{"type": "released", "paths": s.Paths, "local_port": relTo})
-				} else {
-					ui.success("released %s", strings.Join(s.Paths, " "))
-				}
+				printReleased(ui, s.Paths, relTo, false)
 				released++
 			}
 		}
 		if len(failures) > 0 {
 			return &partialReleaseError{
-				Released: released, Failures: failures, LocalPort: relTo, Gateway: c.Gateway(),
+				Released: released, AlreadyAbsent: alreadyAbsent, Failures: failures,
+				LocalPort: relTo, Gateway: c.Gateway(),
 			}
 		}
 		if ui.json {
 			ui.event(map[string]any{
 				"type": "release_summary", "released": released, "failed": 0,
-				"local_port": relTo, "gateway": c.Gateway(),
+				"already_absent": alreadyAbsent, "local_port": relTo, "gateway": c.Gateway(),
 			})
 			return nil
 		}
-		if released == 0 {
+		if released == 0 && alreadyAbsent == 0 {
 			ui.info("no claims recorded for local port %d on this gateway", relTo)
 		}
 		return nil
@@ -471,26 +548,37 @@ func runRelease(ui *console, ctx context.Context, c *tunnelclient.Client, args [
 	for _, s := range st.Claims {
 		if s.Gateway == c.Gateway() && contains(s.Paths, target) {
 			if e := c.Release(ctx, s.ClaimID); e != nil {
+				if claimAlreadyAbsent(e) {
+					if s.PID > 0 && processAlive(s.PID) {
+						return &backgroundReleasePendingError{}
+					}
+					st.removeByID(s.ClaimID)
+					saveState(st)
+					printReleased(ui, []string{target}, s.To, true)
+					return nil
+				}
 				return e
 			}
-			stopDaemon(s) // stop the background daemon, if this was --detach
 			st.removeByID(s.ClaimID)
 			saveState(st)
-			if ui.json {
-				ui.event(map[string]any{"type": "released", "paths": []string{target}, "local_port": s.To})
-			} else {
-				ui.success("released %s", target)
-			}
+			printReleased(ui, []string{target}, s.To, false)
 			return nil
 		}
 	}
 	claims, e := c.List(ctx)
 	if e != nil {
+		if claimListUnavailable(e) {
+			return &claimListUnavailableError{}
+		}
 		return e
 	}
 	for _, x := range claims {
 		if contains(x.Paths, target) {
 			if e := c.Release(ctx, x.ID); e != nil {
+				if claimAlreadyAbsent(e) {
+					printMissingRelease(ui, target, c.Gateway())
+					return nil
+				}
 				return e
 			}
 			if ui.json {
@@ -501,14 +589,73 @@ func runRelease(ui *console, ctx context.Context, c *tunnelclient.Client, args [
 			return nil
 		}
 	}
-	return fmt.Errorf("no active claim found for %s", target)
+	printMissingRelease(ui, target, c.Gateway())
+	return nil
+}
+
+func printMissingRelease(ui *console, target, gateway string) {
+	if ui.json {
+		ui.event(map[string]any{
+			"type": "release_summary", "released": 0, "failed": 0,
+			"paths": []string{target}, "gateway": gateway,
+		})
+		return
+	}
+	ui.info("no active claim found for %s", target)
+}
+
+func claimAlreadyAbsent(err error) bool {
+	var apiErr *tunnelclient.APIError
+	return errors.As(err, &apiErr) && apiErr.Code == "claim_not_found"
+}
+
+func claimListUnavailable(err error) bool {
+	var apiErr *tunnelclient.APIError
+	return errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound && apiErr.Code == ""
+}
+
+type claimListUnavailableError struct{}
+
+func (e *claimListUnavailableError) Error() string {
+	return "gateway does not expose claim lookup"
+}
+
+func (e *claimListUnavailableError) CLIErrorCode() string {
+	return "claim_list_unavailable"
+}
+
+type backgroundReleasePendingError struct{}
+
+func (e *backgroundReleasePendingError) Error() string {
+	return "tunnel process is reconnecting; its release could not yet be confirmed"
+}
+
+func (e *backgroundReleasePendingError) CLIErrorCode() string {
+	return "release_pending"
+}
+
+func printReleased(ui *console, paths []string, localPort int, alreadyAbsent bool) {
+	if ui.json {
+		event := map[string]any{"type": "released", "paths": paths, "local_port": localPort}
+		if alreadyAbsent {
+			event["already_absent"] = true
+		}
+		ui.event(event)
+		return
+	}
+	if alreadyAbsent {
+		ui.info("already released %s", strings.Join(paths, " "))
+		return
+	}
+	ui.success("released %s", strings.Join(paths, " "))
 }
 
 type partialReleaseError struct {
-	Released  int
-	Failures  []releaseFailure
-	LocalPort int
-	Gateway   string
+	Released      int
+	AlreadyAbsent int
+	Failures      []releaseFailure
+	LocalPort     int
+	Gateway       string
 }
 
 type releaseFailure struct {
@@ -523,8 +670,9 @@ func (e *partialReleaseError) Error() string {
 		failures = append(failures, fmt.Sprintf("%s: %s", strings.Join(failure.Paths, " "), failure.Message))
 	}
 	return fmt.Sprintf(
-		"partial release: released %d, failed %d (%s)",
+		"partial release: released %d, already absent %d, failed %d (%s)",
 		e.Released,
+		e.AlreadyAbsent,
 		len(e.Failures),
 		strings.Join(failures, "; "),
 	)
@@ -536,11 +684,12 @@ func (e *partialReleaseError) CLIErrorCode() string {
 
 func (e *partialReleaseError) CLIErrorFields() map[string]any {
 	return map[string]any{
-		"released":   e.Released,
-		"failed":     len(e.Failures),
-		"failures":   e.Failures,
-		"local_port": e.LocalPort,
-		"gateway":    e.Gateway,
+		"released":       e.Released,
+		"already_absent": e.AlreadyAbsent,
+		"failed":         len(e.Failures),
+		"failures":       e.Failures,
+		"local_port":     e.LocalPort,
+		"gateway":        e.Gateway,
 	}
 }
 

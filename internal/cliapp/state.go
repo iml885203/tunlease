@@ -22,7 +22,8 @@ type stateClaim struct {
 	// ExpiresAt lets the detached parent show the same lifecycle deadline as
 	// the foreground process. Older state files simply leave it nil.
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
-	// PID is the detached daemon holding this claim (0 for a foreground claim).
+	// PID is the process holding this claim. It is a liveness hint only and is
+	// never signaled because operating systems can reuse process IDs.
 	PID int `json:"pid,omitempty"`
 }
 type state struct {

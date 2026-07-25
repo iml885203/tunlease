@@ -39,6 +39,92 @@ func TestConnectionMessage(t *testing.T) {
 	}
 }
 
+func TestExpectedTerminalReason(t *testing.T) {
+	tests := []struct {
+		code string
+		want expectedTerminal
+		ok   bool
+	}{
+		{"claim_expired", terminalExpired, true},
+		{"claim_released", terminalReleased, true},
+		{"unauthorized", "", false},
+	}
+	for _, test := range tests {
+		got, ok := expectedTerminalReason(&tunnelclient.APIError{Code: test.code})
+		if got != test.want || ok != test.ok {
+			t.Errorf("expectedTerminalReason(%q) = %q, %v; want %q, %v", test.code, got, ok, test.want, test.ok)
+		}
+	}
+	if _, ok := expectedTerminalReason(errors.New("connection lost")); ok {
+		t.Fatal("transport error classified as expected terminal")
+	}
+}
+
+func TestPrintExpectedTerminal(t *testing.T) {
+	expiresAt := time.Date(2026, time.July, 25, 21, 30, 0, 0, time.Local)
+	claim := tunnelclient.Claim{Paths: []string{"/callback"}, ExpiresAt: &expiresAt}
+	expiryErr := &tunnelclient.APIError{Code: "claim_expired", Detail: "maximum duration reached"}
+
+	var textOut, textErr bytes.Buffer
+	if err := finishTerminalSession(newConsole(&textOut, &textErr), expiryErr, claim); err != nil {
+		t.Fatalf("finishTerminalSession() = %v", err)
+	}
+	if got, want := textOut.String(), "Claim expired at 21:30:00; tunnel closed.\n"; got != want {
+		t.Fatalf("text expiry = %q, want %q", got, want)
+	}
+	if textErr.Len() != 0 {
+		t.Fatalf("text expiry stderr = %q", textErr.String())
+	}
+
+	var jsonOut, jsonErr bytes.Buffer
+	if err := finishTerminalSession(newConsoleOutput(&jsonOut, &jsonErr, "json"), expiryErr, claim); err != nil {
+		t.Fatalf("finishTerminalSession() = %v", err)
+	}
+	var event map[string]any
+	if err := json.Unmarshal(jsonOut.Bytes(), &event); err != nil {
+		t.Fatal(err)
+	}
+	if event["type"] != "expired" || event["expired_at"] == nil {
+		t.Fatalf("JSON expiry = %#v", event)
+	}
+	if jsonErr.Len() != 0 {
+		t.Fatalf("JSON expiry stderr = %q", jsonErr.String())
+	}
+
+	var releasedOut bytes.Buffer
+	if err := finishTerminalSession(
+		newConsole(&releasedOut, &bytes.Buffer{}),
+		&tunnelclient.APIError{Code: "claim_released", Detail: "explicitly released"},
+		claim,
+	); err != nil {
+		t.Fatalf("released finishTerminalSession() = %v", err)
+	}
+	if got, want := releasedOut.String(), "Claim released; tunnel closed.\n"; got != want {
+		t.Fatalf("released text = %q, want %q", got, want)
+	}
+
+	transportErr := errors.New("connection reset")
+	if got := finishTerminalSession(newConsole(&textOut, &textErr), transportErr, claim); !errors.Is(got, transportErr) {
+		t.Fatalf("unexpected terminal error = %v", got)
+	}
+}
+
+func TestPrintStoppedTerminalEmitsOneLifecycleRecord(t *testing.T) {
+	var out, stderr bytes.Buffer
+	printStoppedTerminal(newConsoleOutput(&out, &stderr, "json"), []string{"/callback"})
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("terminal records = %d, want 1: %q", len(lines), out.String())
+	}
+	var event map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &event); err != nil {
+		t.Fatal(err)
+	}
+	if event["type"] != "released" || stderr.Len() != 0 {
+		t.Fatalf("event=%#v stderr=%q", event, stderr.String())
+	}
+}
+
 func TestFormatActivityDuration(t *testing.T) {
 	tests := map[time.Duration]string{
 		0:                       "<1ms",
@@ -251,6 +337,24 @@ func TestJSONListIsOneStructuredDocument(t *testing.T) {
 	}
 }
 
+func TestListExplainsDisabledClaimList(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+	client, err := tunnelclient.New(tunnelclient.Config{Gateway: server.URL, HTTPClient: server.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = runList(newConsole(&bytes.Buffer{}, &bytes.Buffer{}), context.Background(), client, false)
+	var unavailable *claimListUnavailableError
+	if !errors.As(err, &unavailable) {
+		t.Fatalf("runList() error = %v", err)
+	}
+	if code, _, action := errorDetails(err); code != "claim_list_unavailable" ||
+		!strings.Contains(action, "does not expose claim discovery") {
+		t.Fatalf("errorDetails() = %q, %q", code, action)
+	}
+}
+
 func TestFindDaemonClaimMatchesGatewayAndNewProcessPID(t *testing.T) {
 	t.Setenv("TUNLEASE_STATE_FILE", filepath.Join(t.TempDir(), "state.json"))
 	saveState(state{Claims: []stateClaim{
@@ -328,6 +432,187 @@ func TestReleaseByPathUsesSelectedGatewayState(t *testing.T) {
 	claims := loadState().Claims
 	if len(claims) != 1 || claims[0].ClaimID != "other" {
 		t.Fatalf("persisted claims = %#v", claims)
+	}
+}
+
+func TestReleaseMissingPathIsIdempotent(t *testing.T) {
+	t.Setenv("TUNLEASE_STATE_FILE", filepath.Join(t.TempDir(), "state.json"))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"claims":[]}`))
+	}))
+	defer server.Close()
+	client, err := tunnelclient.New(tunnelclient.Config{Gateway: server.URL, HTTPClient: server.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out, stderr bytes.Buffer
+	if err = runRelease(newConsole(&out, &stderr), context.Background(), client, []string{"/missing"}, 0); err != nil {
+		t.Fatalf("runRelease() = %v", err)
+	}
+	if !strings.Contains(out.String(), "no active claim found for /missing") || stderr.Len() != 0 {
+		t.Fatalf("stdout=%q stderr=%q", out.String(), stderr.String())
+	}
+}
+
+func TestReleaseStaleLocalStateIsIdempotent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"claim_not_found","detail":"claim no longer exists"}`))
+	}))
+	defer server.Close()
+	client, err := tunnelclient.New(tunnelclient.Config{Gateway: server.URL, HTTPClient: server.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name  string
+		args  []string
+		relTo int
+	}{
+		{name: "path", args: []string{"/stale"}},
+		{name: "port", relTo: 8080},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("TUNLEASE_STATE_FILE", filepath.Join(t.TempDir(), "state.json"))
+			saveState(state{Claims: []stateClaim{{
+				ClaimID: "stale", Gateway: client.Gateway(), Paths: []string{"/stale"}, To: 8080,
+			}}})
+			var out, stderr bytes.Buffer
+			if err := runRelease(newConsole(&out, &stderr), context.Background(), client, test.args, test.relTo); err != nil {
+				t.Fatalf("runRelease() = %v", err)
+			}
+			if len(loadState().Claims) != 0 {
+				t.Fatalf("stale state remains: %#v", loadState().Claims)
+			}
+			if !strings.Contains(out.String(), "already released /stale") || stderr.Len() != 0 {
+				t.Fatalf("stdout=%q stderr=%q", out.String(), stderr.String())
+			}
+		})
+	}
+}
+
+func TestReleaseStaleByPortSummarySeparatesAlreadyAbsent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"claim_not_found","detail":"claim no longer exists"}`))
+	}))
+	defer server.Close()
+	client, err := tunnelclient.New(tunnelclient.Config{Gateway: server.URL, HTTPClient: server.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TUNLEASE_STATE_FILE", filepath.Join(t.TempDir(), "state.json"))
+	saveState(state{Claims: []stateClaim{{
+		ClaimID: "stale", Gateway: client.Gateway(), Paths: []string{"/stale"}, To: 8080,
+	}}})
+	var out, stderr bytes.Buffer
+	if err = runRelease(newConsoleOutput(&out, &stderr, "json"), context.Background(), client, nil, 8080); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("JSON output = %q", out.String())
+	}
+	var summary map[string]any
+	if err = json.Unmarshal([]byte(lines[1]), &summary); err != nil {
+		t.Fatal(err)
+	}
+	if summary["released"] != float64(0) || summary["already_absent"] != float64(1) || summary["failed"] != float64(0) {
+		t.Fatalf("summary = %#v", summary)
+	}
+}
+
+func TestReleaseDoesNotLoseLiveReconnectingSession(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"claim_not_found","detail":"claim no longer exists"}`))
+	}))
+	defer server.Close()
+	client, err := tunnelclient.New(tunnelclient.Config{Gateway: server.URL, HTTPClient: server.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name  string
+		args  []string
+		relTo int
+	}{
+		{name: "path", args: []string{"/reconnecting"}},
+		{name: "port", relTo: 8080},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("TUNLEASE_STATE_FILE", filepath.Join(t.TempDir(), "state.json"))
+			saveState(state{Claims: []stateClaim{{
+				ClaimID: "old", Gateway: client.Gateway(), Paths: []string{"/reconnecting"},
+				To: 8080, PID: os.Getpid(),
+			}}})
+			err := runRelease(newConsole(&bytes.Buffer{}, &bytes.Buffer{}), context.Background(), client, test.args, test.relTo)
+			if test.relTo > 0 {
+				var partial *partialReleaseError
+				if !errors.As(err, &partial) || len(partial.Failures) != 1 ||
+					partial.Failures[0].Code != "release_pending" {
+					t.Fatalf("runRelease() error = %#v", err)
+				}
+			} else {
+				var pending *backgroundReleasePendingError
+				if !errors.As(err, &pending) {
+					t.Fatalf("runRelease() error = %#v", err)
+				}
+			}
+			if len(loadState().Claims) != 1 {
+				t.Fatalf("live session state was removed: %#v", loadState().Claims)
+			}
+		})
+	}
+}
+
+func TestReleaseRemoteLookupRaceIsIdempotent(t *testing.T) {
+	now := time.Now().UTC()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodGet {
+			_ = json.NewEncoder(w).Encode(map[string]any{"claims": []map[string]any{{
+				"claim_id": "gone", "owner": "dev", "paths": []string{"/gone"}, "started_at": now,
+			}}})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"claim_not_found","detail":"claim no longer exists"}`))
+	}))
+	defer server.Close()
+	client, err := tunnelclient.New(tunnelclient.Config{Gateway: server.URL, HTTPClient: server.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TUNLEASE_STATE_FILE", filepath.Join(t.TempDir(), "state.json"))
+	var out, stderr bytes.Buffer
+	if err = runRelease(newConsole(&out, &stderr), context.Background(), client, []string{"/gone"}, 0); err != nil {
+		t.Fatalf("runRelease() = %v", err)
+	}
+	if !strings.Contains(out.String(), "no active claim found for /gone") || stderr.Len() != 0 {
+		t.Fatalf("stdout=%q stderr=%q", out.String(), stderr.String())
+	}
+}
+
+func TestReleasePathExplainsDisabledClaimList(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+	client, err := tunnelclient.New(tunnelclient.Config{Gateway: server.URL, HTTPClient: server.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TUNLEASE_STATE_FILE", filepath.Join(t.TempDir(), "state.json"))
+	err = runRelease(newConsole(&bytes.Buffer{}, &bytes.Buffer{}), context.Background(), client, []string{"/unknown"}, 0)
+	var unavailable *claimListUnavailableError
+	if !errors.As(err, &unavailable) {
+		t.Fatalf("runRelease() error = %v", err)
+	}
+	if code, _, action := errorDetails(err); code != "claim_list_unavailable" || !strings.Contains(action, "release --to PORT") {
+		t.Fatalf("errorDetails() = %q, %q", code, action)
 	}
 }
 

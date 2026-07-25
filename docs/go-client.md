@@ -51,6 +51,9 @@ reconnect receives a new claim ID, available through `session.Claim()`.
 When the gateway limits claim duration, `session.Claim().ExpiresAt` contains
 the deadline and `session.Err()` returns an API error with code
 `claim_expired` after the terminal expiry handshake.
+An explicit remote release similarly returns `claim_released`. These values are
+terminal reasons for embedding applications; the CLI treats both as successful
+lifecycle completion.
 If a dispatched request cannot connect to the local port, the gateway returns
 `502 This path is claimed, but its local service is unavailable.` and directs
 the owner to the terminal without exposing local details. The session emits

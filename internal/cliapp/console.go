@@ -312,6 +312,8 @@ func errorDetails(err error) (code, message, action string) {
 		"owner_claim_limit_reached": "Release one of your paths and retry.",
 		"claim_expired":             "Run tul claim again.",
 		"partial_release":           "Retry the same release command for the remaining paths.",
+		"claim_list_unavailable":    "This gateway does not expose claim discovery; manage locally recorded claims with tul release --to PORT.",
+		"release_pending":           "Retry the same release command; the tunnel process is reconnecting.",
 	}[code]
 	return code, err.Error(), action
 }
