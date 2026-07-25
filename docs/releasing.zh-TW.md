@@ -20,6 +20,8 @@ Homebrew tap updater、等待 formula tests 與 merge，並確認 formula 已符
 permissions 只需 `Actions: Read and write` 與 `Contents: Read`。Tap updater
 會使用自身 repository-scoped `GITHUB_TOKEN` 更新及 merge formula；跨 repo
 token 只負責 dispatch 與觀察該 workflow。
+可用既有 release version 手動執行 **Sync Homebrew** workflow，以驗證 token
+或在不發布另一個 release 的情況下復原。
 
 手動推送合法的 annotated tag 仍可作為復原方式；tag CI 會使用同一份
 reusable artifact workflow。
