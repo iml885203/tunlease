@@ -28,7 +28,7 @@ flowchart LR
       Gateway --> Origin["Original app"]
     end
     subgraph Developer["Developer machine"]
-      CLI["tunle CLI"] --> Local["Local service"]
+      CLI["tul CLI"] --> Local["Local service"]
     end
     Gateway --> CLI
 ```

@@ -6,7 +6,7 @@ Claim one path on an existing fixed endpoint; its live traffic reaches your
 laptop while every other path keeps serving the real app. Ctrl+C to release.
 
 ```bash
-tunle claim '/demo/testing/my-first-tunnel/' --to 8080 --gateway tunlease.dotw.me
+tul claim '/demo/testing/my-first-tunnel/' --to 8080 --gateway tunlease.dotw.me
 ```
 
 ![Claiming a path on the public Tunlease demo relay and forwarding it to a server on your laptop](assets/demo.gif)
@@ -34,7 +34,7 @@ flowchart LR
     end
 
     subgraph Developer["Developer machine"]
-        CLI[tunle CLI]
+        CLI[tul CLI]
         Local[Your local service]
         CLI -->|"reverse tunnel"| Local
     end
@@ -87,7 +87,7 @@ irm https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/install.ps
 Then claim the callback path:
 
 ```bash
-tunle claim '/demo/testing/my-first-tunnel/' --to 8080 --gateway tunlease.dotw.me
+tul claim '/demo/testing/my-first-tunnel/' --to 8080 --gateway tunlease.dotw.me
 ```
 
 Ctrl+C releases it. To use your own fixed callback host instead of the public
@@ -105,12 +105,12 @@ checksum before replacing the binary.
 
 ## Components and deployment model
 
-It is all one `tunle` binary; a subcommand selects the role:
+It is all one `tul` binary; a subcommand selects the role:
 
 | Command | Runs on | Responsibility |
 |---|---|---|
-| `tunle claim` (also `list` / `release`) | Developer machine | Connect a path to a local service |
-| `tunle gateway` | In front of the app | Own active paths, terminate tunnels, route requests, and proxy to the original app |
+| `tul claim` (also `list` / `release`) | Developer machine | Connect a path to a local service |
+| `tul gateway` | In front of the app | Own active paths, terminate tunnels, route requests, and proxy to the original app |
 
 The gateway sits in front of the app and does everything on the server side. It
 serves its control plane under the fixed `/_tunlease` prefix; every
@@ -119,7 +119,7 @@ matches, otherwise proxied to `fail_open_url` (the original app). A public demo
 relay without an original app may return a configured error instead. There is
 no separate sidecar process.
 
-- **Any host, one app origin** — run `tunle gateway` with `fail_open_url` pointed at the
+- **Any host, one app origin** — run `tul gateway` with `fail_open_url` pointed at the
   app's Service and deploy it in front of the app (Ingress → gateway). This is
   the model the Helm chart deploys. Kubernetes is optional.
 
@@ -128,7 +128,7 @@ is just the recommended target for the platform model.
 
 ## Embedding the tunnel client
 
-Go applications can embed the same connected-path and reconnect engine used by the standalone CLI. Their users do not need the `tunle` binary.
+Go applications can embed the same connected-path and reconnect engine used by the standalone CLI. Their users do not need the `tul` binary.
 
 ```bash
 go get github.com/iml885203/tunlease/pkg/tunnelclient@latest
@@ -147,7 +147,7 @@ make hooks
 ```
 
 ```bash
-make build   # Build the tunle binary into bin/
+make build   # Build the tul binary into bin/
 make test    # Run the Go test suite
 make lint    # Run the same Go-downloaded, pinned golangci-lint version as CI
 make preflight # Build, vet, race-test, lint, and reject formatting drift

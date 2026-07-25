@@ -6,7 +6,7 @@
 照常打到真正的 app。Ctrl+C 釋放。
 
 ```bash
-tunle claim '/demo/testing/my-first-tunnel/' --to 8080 --gateway tunlease.dotw.me
+tul claim '/demo/testing/my-first-tunnel/' --to 8080 --gateway tunlease.dotw.me
 ```
 
 ![在 Tunlease public demo relay claim path，並將流量轉送到 laptop 上的服務](assets/demo.gif)
@@ -33,7 +33,7 @@ flowchart LR
     end
 
     subgraph Developer["開發者電腦"]
-        CLI[tunle CLI]
+        CLI[tul CLI]
         Local[你的本機服務]
         CLI -->|"反向 tunnel"| Local
     end
@@ -82,7 +82,7 @@ irm https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/install.ps
 接著 claim callback path：
 
 ```bash
-tunle claim '/demo/testing/my-first-tunnel/' --to 8080 --gateway tunlease.dotw.me
+tul claim '/demo/testing/my-first-tunnel/' --to 8080 --gateway tunlease.dotw.me
 ```
 
 Ctrl+C 釋放。若要使用自己的固定 callback host，而不是 public demo，請看
@@ -98,26 +98,26 @@ Installer 會在更換 binary 前驗證發布的 SHA-256 checksum。
 
 ## 元件與部署模型
 
-全部都是同一個 `tunle` binary，用 subcommand 切換角色：
+全部都是同一個 `tul` binary，用 subcommand 切換角色：
 
 | 命令 | 執行於 | 職責 |
 |---|---|---|
-| `tunle claim`（及 `list` / `release`） | 開發者電腦 | 把一條 path 連到本機服務 |
-| `tunle gateway` | 前置於 app | 管理 active path、終止 tunnel、路由 request 並 proxy 到原 app |
+| `tul claim`（及 `list` / `release`） | 開發者電腦 | 把一條 path 連到本機服務 |
+| `tul gateway` | 前置於 app | 管理 active path、終止 tunnel、路由 request 並 proxy 到原 app |
 
 Gateway 位於 app 前面，並包辦 server 端所有事情。它把 control plane 放在
 固定的 `/_tunlease` 底下；其餘 path 都是第三方流量——符合 claim
 時 tunnel 給開發者，否則 proxy 回 `fail_open_url`（原始 app）；沒有原始 app
 的 public demo relay 也可以改回設定的固定錯誤。沒有獨立的 sidecar process。
 
-- **任何環境、單一 app origin** — 跑 `tunle gateway`，把 `fail_open_url` 指向 app 的 Service，並將
+- **任何環境、單一 app origin** — 跑 `tul gateway`，把 `fail_open_url` 指向 app 的 Service，並將
   gateway 部署在 app 前面（Ingress → gateway）。這是 Helm chart 部署的模型。
 
 Gateway 不會呼叫 Kubernetes API，因此 Kubernetes 不是必要條件——它只是平台模型的建議部署目標。
 
 ## 嵌入 tunnel client
 
-Go 應用程式可以直接嵌入相同的 path ownership、重新連線與 tunnel engine，使用者不需要另外安裝 `tunle` binary。
+Go 應用程式可以直接嵌入相同的 path ownership、重新連線與 tunnel engine，使用者不需要另外安裝 `tul` binary。
 
 ```bash
 go get github.com/iml885203/tunlease/pkg/tunnelclient@latest
@@ -136,7 +136,7 @@ make hooks
 ```
 
 ```bash
-make build      # 建置 tunle binary 到 bin/
+make build      # 建置 tul binary 到 bin/
 make test       # 執行 Go tests
 make lint       # 由 Go 下載並執行與 CI 相同的固定版 golangci-lint
 make preflight  # build、vet、race test、lint 與格式檢查

@@ -148,7 +148,7 @@ func TestUnavailableLocalTargetReturnsDescriptiveBadGatewayAndEvent(t *testing.T
 		t.Fatalf("status = %d, body = %q", response.StatusCode, body)
 	}
 	wantBody := "This path is claimed, but its local service is unavailable.\n\n" +
-		"If this is your tunnel, check the terminal running tunle.\n"
+		"If this is your tunnel, check the terminal running tul.\n"
 	if string(body) != wantBody {
 		t.Fatalf("body = %q", body)
 	}

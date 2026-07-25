@@ -16,7 +16,7 @@ scoop install tunlease
 ```
 
 Homebrew 會安裝 bash、zsh 與 fish shell completions。CLI 也可透過
-`tunle completion SHELL` 直接輸出 completion script。
+`tul completion SHELL` 直接輸出 completion script。
 
 ## 連線
 
@@ -26,7 +26,7 @@ service，再執行：
 ```bash
 export TUNLEASE_GATEWAY=callbacks.staging.example.com
 export TUNLEASE_TOKEN=YOUR_TOKEN
-tunle claim '/webhooks/provider/callback/*' --to 8080
+tul claim '/webhooks/provider/callback/*' --to 8080
 ```
 
 Gateway URL 只填 host；client 會加入固定的 `/_tunlease`。預設使用 HTTPS，
@@ -53,10 +53,10 @@ process 擁有兩者：Ctrl+C 或連線結束會立即釋放。暫時斷網時�
 claim ID 會改變，空窗期間 request 走 origin。
 
 ```bash
-tunle list
-tunle list --all
-tunle release '/webhooks/provider/callback/*'
-tunle release --to 8080
+tul list
+tul list --all
+tul release '/webhooks/provider/callback/*'
+tul release --to 8080
 ```
 
 `-d` 是 `--detach` 的 shorthand，會啟動背景 process。Automation 必須在

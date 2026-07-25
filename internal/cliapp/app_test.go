@@ -25,6 +25,12 @@ func TestNormalizePath(t *testing.T) {
 	}
 }
 
+func TestCommandName(t *testing.T) {
+	if got := NewCommand().Use; got != "tul" {
+		t.Fatalf("command name = %q, want %q", got, "tul")
+	}
+}
+
 func TestCheckLocalTarget(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

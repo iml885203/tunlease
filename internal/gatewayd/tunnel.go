@@ -32,7 +32,7 @@ const (
 	streamExpire   = byte(4)
 
 	targetUnavailableMessage = "This path is claimed, but its local service is unavailable.\n\n" +
-		"If this is your tunnel, check the terminal running tunle."
+		"If this is your tunnel, check the terminal running tul."
 )
 
 var errClaimOwner = errors.New("claim belongs to another owner")

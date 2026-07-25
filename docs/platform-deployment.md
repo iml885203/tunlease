@@ -99,7 +99,7 @@ kubectl -n tunlease logs deployment/tunlease-gateway --since=10m
 ```
 
 Verify the complete sequence: unclaimed request reaches origin; an active
-`tunle claim` reaches localhost; Ctrl+C returns the same URL to origin.
+`tul claim` reaches localhost; Ctrl+C returns the same URL to origin.
 `healthz` proves only that the process answers HTTP.
 
 A rollout disconnects all clients. They reconnect when the new gateway is

@@ -5,13 +5,13 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-s -w" -o /out/tunle ./cmd/tunlease && \
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-s -w" -o /out/tul ./cmd/tunlease && \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-s -w" -o /out/tunlease-testapp ./cmd/testapp
 
-# The gateway image runs the single tunle binary with the `gateway` subcommand.
+# The gateway image runs the single tul binary with the `gateway` subcommand.
 FROM gcr.io/distroless/static-debian12:nonroot AS gateway
-COPY --from=build /out/tunle /tunle
-ENTRYPOINT ["/tunle"]
+COPY --from=build /out/tul /tul
+ENTRYPOINT ["/tul"]
 CMD ["gateway"]
 
 FROM gcr.io/distroless/static-debian12:nonroot AS testapp

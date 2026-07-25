@@ -91,7 +91,7 @@ curl -fsS https://callbacks.staging.example.com/webhooks/provider/example
 kubectl -n tunlease logs deployment/tunlease-gateway --since=10m
 ```
 
-驗證完整順序：unclaimed request 到 origin；執行 `tunle claim` 後到
+驗證完整順序：unclaimed request 到 origin；執行 `tul claim` 後到
 localhost；Ctrl+C 後同一 URL 回到 origin。`healthz` 只證明 process 能回 HTTP。
 
 Rollout 會斷開所有 client；新 gateway 可連線後 client 會重連，空窗期間 request

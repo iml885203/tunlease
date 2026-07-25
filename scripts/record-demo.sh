@@ -14,17 +14,17 @@ TMP=$(mktemp -d /tmp/tunlease-vhs.XXXXXX)
 BIN="$TMP/bin"
 PIDS=()
 cleanup() {
-  HOME="$TMP/home" "$BIN/tunle" release --to "$PORT_LOCAL" \
+  HOME="$TMP/home" "$BIN/tul" release --to "$PORT_LOCAL" \
     --gateway "$DOMAIN" >/dev/null 2>&1 || true
   kill "${PIDS[@]}" 2>/dev/null || true
   rm -rf "$TMP"
 }
 trap cleanup EXIT
 
-# Build tunle onto PATH for the recording.
+# Build tul onto PATH for the recording.
 mkdir -p "$BIN"
 mkdir -p "$TMP/home"
-go build -o "$BIN/tunle" ./cmd/tunlease
+go build -o "$BIN/tul" ./cmd/tunlease
 export PATH="$BIN:$PATH"
 
 # Local stand-in dev server the claimed path will reach.

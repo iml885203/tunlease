@@ -35,7 +35,7 @@ func NewCommand() *cobra.Command {
 func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 	var gateway, token string
 	var insecure bool
-	root := &cobra.Command{Use: "tunle", Short: "Claim a 3rd-party callback path and tunnel it to your machine", SilenceUsage: true, Version: fmt.Sprintf("%s (%s)", version, buildTime)}
+	root := &cobra.Command{Use: "tul", Short: "Claim a 3rd-party callback path and tunnel it to your machine", SilenceUsage: true, Version: fmt.Sprintf("%s (%s)", version, buildTime)}
 	// Client flags live on the client subcommands (claim/list/release), not on
 	// root, so the gateway subcommand doesn't inherit irrelevant client flags.
 	addClientFlags := func(c *cobra.Command) {
@@ -121,7 +121,7 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 		},
 	}
 	claimCmd.Flags().IntVar(&to, "to", 0, "local port to receive the traffic")
-	claimCmd.Flags().BoolVarP(&detach, "detach", "d", false, "run in the background and return immediately (stop with tunle release)")
+	claimCmd.Flags().BoolVarP(&detach, "detach", "d", false, "run in the background and return immediately (stop with tul release)")
 	claimCmd.Flags().BoolVar(&daemon, "_daemon", false, "")
 	_ = claimCmd.Flags().MarkHidden("_daemon")
 	_ = claimCmd.MarkFlagRequired("to")
@@ -183,7 +183,7 @@ func runClaim(c *tunnelclient.Client, paths []string, to int, daemon bool) error
 	cl := session.Claim()
 	pid := 0
 	if daemon {
-		pid = os.Getpid() // recorded so `tunle release` can stop this daemon
+		pid = os.Getpid() // recorded so `tul release` can stop this daemon
 	}
 	st := loadState()
 	st.add(stateClaim{ClaimID: cl.ID, Gateway: c.Gateway(), Paths: cl.Paths, To: to, PID: pid})

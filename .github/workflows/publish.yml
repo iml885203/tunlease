@@ -62,7 +62,7 @@ jobs:
         run: |
           BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           for PAIR in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
-            OS=${PAIR%/*}; ARCH=${PAIR#*/}; NAME="tunle-${OS}-${ARCH}"
+            OS=${PAIR%/*}; ARCH=${PAIR#*/}; NAME="tul-${OS}-${ARCH}"
             [ "$OS" = "windows" ] && NAME="${NAME}.exe"
             GOOS=$OS GOARCH=$ARCH CGO_ENABLED=0 go build \
               -ldflags "-s -w -X 'main.version=${VERSION}' -X 'main.buildTime=${BUILD_TIME}'" \
@@ -76,6 +76,6 @@ jobs:
           target_commitish: ${{ inputs.ref }}
           generate_release_notes: true
           files: |
-            tunle-linux-*
-            tunle-darwin-*
-            tunle-windows-*
+            tul-linux-*
+            tul-darwin-*
+            tul-windows-*

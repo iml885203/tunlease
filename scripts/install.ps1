@@ -7,8 +7,8 @@ if (-not [Environment]::Is64BitOperatingSystem) {
     throw "tunlease requires 64-bit Windows"
 }
 
-$Name = "tunle-windows-amd64.exe"
-$Temp = Join-Path ([IO.Path]::GetTempPath()) ("tunle-" + [Guid]::NewGuid().ToString("N") + ".exe")
+$Name = "tul-windows-amd64.exe"
+$Temp = Join-Path ([IO.Path]::GetTempPath()) ("tul-" + [Guid]::NewGuid().ToString("N") + ".exe")
 $ChecksumTemp = $Temp + ".sha256"
 
 try {
@@ -22,7 +22,7 @@ try {
     }
 
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-    $Target = Join-Path $InstallDir "tunle.exe"
+    $Target = Join-Path $InstallDir "tul.exe"
     if (Test-Path $Target) {
         Copy-Item -LiteralPath $Target -Destination "$Target.prev" -Force
     }

@@ -28,7 +28,7 @@ tokens:
   - {owner: e2e, token: "$TOKEN"}
 EOF
 
-./bin/tunle gateway --config "$TMP/config.yaml" > "$TMP/gateway.log" 2>&1 &
+./bin/tul gateway --config "$TMP/config.yaml" > "$TMP/gateway.log" 2>&1 &
 PIDS+=($!)
 
 # Origin server：未 claim 的 path 會送到這裡。
@@ -63,14 +63,14 @@ done
 export TUNLEASE_GATEWAY="http://127.0.0.1:$PORT_API" TUNLEASE_TOKEN="$TOKEN"
 
 # --- 白名單外 → 403 ---
-if ./bin/tunle claim --to $PORT_LOCAL /outside/cb 2> "$TMP/deny.log"; then
+if ./bin/tul claim --to $PORT_LOCAL /outside/cb 2> "$TMP/deny.log"; then
   fail "claim outside whitelist should fail"
 fi
 grep -qi "allowlist\|not allowed" "$TMP/deny.log" || fail "403 message missing: $(cat "$TMP/deny.log")"
 echo "OK: whitelist 403"
 
 # --- claim + tunnel ---
-./bin/tunle claim --to $PORT_LOCAL /test/cb > "$TMP/claim.log" 2>&1 &
+./bin/tul claim --to $PORT_LOCAL /test/cb > "$TMP/claim.log" 2>&1 &
 CLAIM_PID=$!
 PIDS+=($CLAIM_PID)
 
@@ -83,14 +83,14 @@ done
 echo "OK: claim → tunnel → local server"
 
 # --- 衝突 → 409（另一個 owner 視角：同 token 也該擋，前綴互蓋）---
-if ./bin/tunle claim --to $PORT_LOCAL /test/cb/deeper 2> "$TMP/conflict.log"; then
+if ./bin/tul claim --to $PORT_LOCAL /test/cb/deeper 2> "$TMP/conflict.log"; then
   fail "overlapping claim should fail"
 fi
 grep -q "already claimed by e2e" "$TMP/conflict.log" || fail "409 message missing: $(cat "$TMP/conflict.log")"
 echo "OK: overlap 409 with claimed_by"
 
 # --- list 有 (you) 標記 ---
-./bin/tunle list | grep -q "(you)" || fail "list missing (you) marker"
+./bin/tul list | grep -q "(you)" || fail "list missing (you) marker"
 echo "OK: list shows own claim"
 
 # --- kill -9 → connection close → claim 消失 ---
@@ -104,6 +104,6 @@ echo "$CLAIMS" | grep -q '"claims":\[\]' || fail "claim survived closed tunnel: 
 echo "OK: kill -9 → connection close → claim gone"
 
 # --- release 後 state 清乾淨（release 殘留 state 條目）---
-./bin/tunle release /test/cb > /dev/null 2>&1 || true
+./bin/tul release /test/cb > /dev/null 2>&1 || true
 
 echo "ALL E2E CHECKS PASSED"

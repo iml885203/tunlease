@@ -12,9 +12,9 @@ import (
 
 // runDetach re-execs this binary as a detached background daemon that holds the
 // claim, then waits until the daemon has recorded the claim in the state file
-// and returns its id. It makes `tunle claim --detach` non-blocking, which is
+// and returns its id. It makes `tul claim --detach` non-blocking, which is
 // what an agent needs: the call returns once the tunnel is up, and the claim is
-// torn down later with `tunle release`.
+// torn down later with `tul release`.
 func runDetach(paths []string, to int, gateway, token string, insecure bool, scheme string) error {
 	self, err := os.Executable()
 	if err != nil {
@@ -69,7 +69,7 @@ func runDetach(paths []string, to int, gateway, token string, insecure bool, sch
 		if c, ok := findDaemonClaim(gateway, to, paths); ok {
 			fmt.Printf("claimed %s in the background (claim %s, pid %d)\n", strings.Join(paths, " "), shortID(c.ClaimID), pid)
 			fmt.Printf("logs: %s\n", logPath)
-			fmt.Printf("release with: tunle release --to %d\n", to)
+			fmt.Printf("release with: tul release --to %d\n", to)
 			return nil
 		}
 		time.Sleep(200 * time.Millisecond)

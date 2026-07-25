@@ -7,7 +7,7 @@
 #
 # Scenarios:
 #   1. before any claim, a third-party path falls open to the app
-#   2. after `tunle claim`, that path reaches the developer's local server
+#   2. after `tul claim`, that path reaches the developer's local server
 #   3. after the tunnel dies, its paths are released and fall open again
 set -euo pipefail
 

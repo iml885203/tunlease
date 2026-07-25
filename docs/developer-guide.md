@@ -16,7 +16,7 @@ scoop install tunlease
 ```
 
 Homebrew installs shell completions for bash, zsh, and fish. The CLI can also
-print a completion script directly with `tunle completion SHELL`.
+print a completion script directly with `tul completion SHELL`.
 
 ## Connect
 
@@ -26,7 +26,7 @@ personal token. Start the local service, then:
 ```bash
 export TUNLEASE_GATEWAY=callbacks.staging.example.com
 export TUNLEASE_TOKEN=YOUR_TOKEN
-tunle claim '/webhooks/provider/callback/*' --to 8080
+tul claim '/webhooks/provider/callback/*' --to 8080
 ```
 
 The gateway URL is the bare host; the client adds fixed `/_tunlease`. HTTPS is
@@ -56,10 +56,10 @@ immediately. On transient network loss it reconnects automatically; the claim
 ID changes and requests use the origin during the gap.
 
 ```bash
-tunle list
-tunle list --all
-tunle release '/webhooks/provider/callback/*'
-tunle release --to 8080
+tul list
+tul list --all
+tul release '/webhooks/provider/callback/*'
+tul release --to 8080
 ```
 
 `-d` is shorthand for `--detach`; it starts a background process. Always use

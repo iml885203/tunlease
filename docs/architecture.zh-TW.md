@@ -27,7 +27,7 @@ flowchart LR
       Gateway --> Origin["原始 app"]
     end
     subgraph Developer["開發者電腦"]
-      CLI["tunle CLI"] --> Local["本機服務"]
+      CLI["tul CLI"] --> Local["本機服務"]
     end
     Gateway --> CLI
 ```
