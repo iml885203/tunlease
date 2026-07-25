@@ -73,13 +73,13 @@ func TestNormalizePath(t *testing.T) {
 }
 
 func TestCommandName(t *testing.T) {
-	if got := NewCommand().Use; got != "tul" {
+	if got := NewCommandWithVersion("dev", "unknown").Use; got != "tul" {
 		t.Fatalf("command name = %q, want %q", got, "tul")
 	}
 }
 
 func TestHelpShowsHappyPathAndSeparatesOperatorCommand(t *testing.T) {
-	command := NewCommand()
+	command := NewCommandWithVersion("dev", "unknown")
 	var out bytes.Buffer
 	command.SetOut(&out)
 	command.SetArgs([]string{"--help"})
@@ -122,7 +122,7 @@ func TestCheckLocalTarget(t *testing.T) {
 }
 
 func TestClaimDetachShorthand(t *testing.T) {
-	claim, _, err := NewCommand().Find([]string{"claim"})
+	claim, _, err := NewCommandWithVersion("dev", "unknown").Find([]string{"claim"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestCommonFlagsHaveConsistentShorthands(t *testing.T) {
 		{"release", "output", "o"},
 		{"gateway", "config", "c"},
 	}
-	root := NewCommand()
+	root := NewCommandWithVersion("dev", "unknown")
 	for _, tt := range tests {
 		command, _, err := root.Find([]string{tt.command})
 		if err != nil {
@@ -173,7 +173,7 @@ func TestCommonFlagsHaveConsistentShorthands(t *testing.T) {
 func TestJSONCommandErrorHasStableCode(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("TUNLEASE_GATEWAY", "")
-	command := NewCommand()
+	command := NewCommandWithVersion("dev", "unknown")
 	command.SetArgs([]string{"list", "--output", "json"})
 	executed, err := command.ExecuteC()
 	if err == nil {
@@ -200,7 +200,7 @@ func TestJSONParseErrorsIgnoreOutputFlagOrder(t *testing.T) {
 		{"list", "-ojson", "--bad"},
 	}
 	for _, args := range tests {
-		command := NewCommand()
+		command := NewCommandWithVersion("dev", "unknown")
 		command.SetArgs(args)
 		executed, err := command.ExecuteC()
 		if err == nil {
@@ -332,7 +332,7 @@ func TestReleaseByPathUsesSelectedGatewayState(t *testing.T) {
 }
 
 func TestCommandReturnsErrorsWithoutPrintingADuplicate(t *testing.T) {
-	command := NewCommand()
+	command := NewCommandWithVersion("dev", "unknown")
 	var stderr bytes.Buffer
 	command.SetErr(&stderr)
 	command.SetArgs([]string{"claim", "/x", "--to", "0"})
@@ -348,7 +348,7 @@ func TestCommandReturnsErrorsWithoutPrintingADuplicate(t *testing.T) {
 func TestClaimReportsMissingGatewayBeforeLocalTargetWarning(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("TUNLEASE_GATEWAY", "")
-	command := NewCommand()
+	command := NewCommandWithVersion("dev", "unknown")
 	var stderr bytes.Buffer
 	command.SetErr(&stderr)
 	command.SetArgs([]string{"claim", "/x", "--to", "1"})
@@ -423,7 +423,7 @@ func TestClientCommandReportsConfigErrorBeforeConnecting(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	command := NewCommand()
+	command := NewCommandWithVersion("dev", "unknown")
 	command.SetArgs([]string{"list"})
 	err := command.Execute()
 	if err == nil {

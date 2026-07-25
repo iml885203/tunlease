@@ -1,4 +1,4 @@
-# <img src="assets/icon.png" width="32" height="32" alt=""> Tunlease
+# <img src="assets/icon.svg" width="32" height="32" alt=""> Tunlease
 
 **在自己電腦上 debug webhook，用它真實、改不了的 callback URL——不重新部署、不換新 URL。**
 

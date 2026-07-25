@@ -104,6 +104,27 @@ jobs:
       ref: ${{ github.sha }}
     secrets: inherit
 
+  update-chart-defaults:
+    needs: [tag, publish]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+      - name: Update Helm defaults to the released version
+        env:
+          VERSION: ${{ needs.tag.outputs.version }}
+        run: |
+          ./scripts/set-release-version.sh "$VERSION"
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add charts/tunlease/Chart.yaml charts/tunlease/values.yaml
+          git commit -m "chore(chart): update defaults to $VERSION"
+          git push origin HEAD:main
+
   update-homebrew:
     needs: [tag, publish]
     uses: ./.github/workflows/sync-homebrew.yml
@@ -121,7 +142,7 @@ jobs:
       SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
 
   deploy-public-relay:
-    needs: [tag, publish, update-homebrew, update-scoop]
+    needs: [tag, publish, update-chart-defaults, update-homebrew, update-scoop]
     uses: ./.github/workflows/deploy-public-relay.yml
     with:
       version: ${{ needs.tag.outputs.version }}

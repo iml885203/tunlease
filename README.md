@@ -1,4 +1,4 @@
-# <img src="assets/icon.png" width="32" height="32" alt=""> Tunlease
+# <img src="assets/icon.svg" width="32" height="32" alt=""> Tunlease
 
 **Debug a webhook on your laptop using its real, unchangeable callback URL — no redeploy, no new URL.**
 

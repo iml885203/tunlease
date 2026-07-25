@@ -28,10 +28,6 @@ func NormalizePath(p string) (string, error) {
 	return tunnelclient.NormalizePath(p)
 }
 
-func NewCommand() *cobra.Command {
-	return NewCommandWithVersion("dev", "unknown")
-}
-
 func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 	var gateway, token string
 	var insecure bool
