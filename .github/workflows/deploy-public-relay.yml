@@ -36,7 +36,7 @@ jobs:
           fi
           gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null
 
-      - name: Dispatch public relay deployment
+      - name: Dispatch relay deployment and wait for completion
         env:
           GH_TOKEN: ${{ secrets.PUBLIC_RELAY_INFRA_TOKEN }}
           VERSION: ${{ inputs.version }}
