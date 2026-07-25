@@ -56,6 +56,11 @@ Open a [GitHub issue](https://github.com/iml885203/tunlease/issues). For
 suspected security vulnerabilities, follow [SECURITY.md](SECURITY.md) instead of
 filing a public issue.
 
+## Releases
+
+Maintainers should follow the [release runbook](docs/releasing.md). It covers
+GitHub Releases, gateway images, the Homebrew tap, and Homebrew Core readiness.
+
 ## License
 
 By contributing, you agree that your contributions are licensed under the
