@@ -6,7 +6,7 @@
 照常打到真正的 app。Ctrl+C 釋放。
 
 ```bash
-tunle claim '/webhooks/stripe/*' --to 8080 --gateway staging.myapp.com
+tunle claim '/demo/testing/my-first-tunnel/' --to 8080 --gateway tunlease.dotw.me
 ```
 
 ![在 Tunlease public demo relay claim path，並將流量轉送到 laptop 上的服務](assets/demo.gif)
@@ -82,17 +82,16 @@ irm https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/install.ps
 接著 claim callback path：
 
 ```bash
-tunle claim '/webhooks/provider/callback/*' --to 8080 --gateway myapp.example.com
-# 或立即返回，讓 tunnel 在背景執行：
-tunle claim '/webhooks/provider/callback/*' --to 8080 -d --gateway myapp.example.com
+tunle claim '/demo/testing/my-first-tunnel/' --to 8080 --gateway tunlease.dotw.me
 ```
 
-Ctrl+C 釋放。預設使用 HTTPS；只有 gateway 沒有 TLS（例如 localhost）才明確填
-`http://`。若 gateway 還沒架好，請先看[平台部署指南](docs/platform-deployment.zh-TW.md)。
+Ctrl+C 釋放。若要使用自己的固定 callback host，而不是 public demo，請看
+[平台部署指南](docs/platform-deployment.zh-TW.md)。
 
-Claim 會收到真實 staging callback，包含其中的資料與 credential。請先啟動本機服務、
-只 claim 所需的最窄 path，並確保 callback handler idempotent：provider retry
-與 request 中途 tunnel failure 都可能造成重複 delivery。
+Public demo 只能用於測試流量。自己 staging gateway 上的 claim 會收到真實
+callback，包含其中的資料與 credential。請先啟動本機服務、只 claim 所需的
+最窄 path，並確保 callback handler idempotent：provider retry 與 request
+中途 tunnel failure 都可能造成重複 delivery。
 
 設定、lifecycle 指令與問題排查請看[開發者指南](docs/developer-guide.zh-TW.md)。
 Installer 會在更換 binary 前驗證發布的 SHA-256 checksum。

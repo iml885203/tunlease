@@ -6,7 +6,7 @@ Claim one path on an existing fixed endpoint; its live traffic reaches your
 laptop while every other path keeps serving the real app. Ctrl+C to release.
 
 ```bash
-tunle claim '/webhooks/stripe/*' --to 8080 --gateway staging.myapp.com
+tunle claim '/demo/testing/my-first-tunnel/' --to 8080 --gateway tunlease.dotw.me
 ```
 
 ![Claiming a path on the public Tunlease demo relay and forwarding it to a server on your laptop](assets/demo.gif)
@@ -87,19 +87,17 @@ irm https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/install.ps
 Then claim the callback path:
 
 ```bash
-tunle claim '/webhooks/provider/callback/*' --to 8080 --gateway myapp.example.com
-# Or return immediately and keep the tunnel in the background:
-tunle claim '/webhooks/provider/callback/*' --to 8080 -d --gateway myapp.example.com
+tunle claim '/demo/testing/my-first-tunnel/' --to 8080 --gateway tunlease.dotw.me
 ```
 
-Ctrl+C releases it. HTTPS is the default; use an explicit `http://` only for a
-gateway without TLS, such as localhost. If the gateway is not set up yet, see the
-[platform deployment guide](docs/platform-deployment.md).
+Ctrl+C releases it. To use your own fixed callback host instead of the public
+demo, see the [platform deployment guide](docs/platform-deployment.md).
 
-Claims receive real staging callbacks, including their data and credentials.
-Start your local service first, claim the narrowest path you need, and make
-callback handling idempotent: provider retries and mid-request tunnel failures
-can produce duplicate delivery.
+Use the public demo only with test traffic. Claims on your own staging gateway
+receive real callbacks, including their data and credentials. Start your local
+service first, claim the narrowest path you need, and make callback handling
+idempotent: provider retries and mid-request tunnel failures can produce
+duplicate delivery.
 
 See the [developer guide](docs/developer-guide.md) for configuration, lifecycle
 commands, and troubleshooting. The installers verify the published SHA-256
