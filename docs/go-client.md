@@ -107,6 +107,8 @@ This binds the full `tul claim` flag set: `-p/--to`, `-g/--gateway`,
 are absent, and does not widen exact paths into wildcards.
 
 `ClaimUse`, `ClaimShort`, and `ClaimExample` provide the canonical command help.
+Embedding commands whose release command is not `tul release` should use
+`BindClaimFlagsWithReleaseCommand`.
 `BindListFlags` and `BindReleaseFlags` provide the corresponding `tul list` and
 `tul release` contracts. The embedding application remains responsible for
 implementing foreground and detached lifecycle behavior and rendering its

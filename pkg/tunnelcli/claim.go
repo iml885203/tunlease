@@ -34,11 +34,17 @@ type ClaimOptions struct {
 
 // BindClaimFlags adds Tunlease's shared claim flags to cmd.
 func BindClaimFlags(cmd *cobra.Command, flags *ClaimFlags) {
+	BindClaimFlagsWithReleaseCommand(cmd, flags, "tul release")
+}
+
+// BindClaimFlagsWithReleaseCommand adds claim flags using the embedding
+// application's release command in the detach help.
+func BindClaimFlagsWithReleaseCommand(cmd *cobra.Command, flags *ClaimFlags, releaseCommand string) {
 	cmd.Flags().IntVarP(&flags.To, "to", "p", 0, "local port to receive the traffic")
 	cmd.Flags().StringVarP(&flags.Gateway, "gateway", "g", "", "gateway base URL (env TUNLEASE_GATEWAY)")
 	cmd.Flags().StringVarP(&flags.Token, "token", "t", "", "API token (env TUNLEASE_TOKEN)")
 	cmd.Flags().BoolVarP(&flags.Insecure, "insecure", "k", false, "skip gateway TLS verification, e.g. a self-signed gateway (env TUNLEASE_INSECURE)")
-	cmd.Flags().BoolVarP(&flags.Detach, "detach", "d", false, "run in the background and return immediately (stop with tul release)")
+	cmd.Flags().BoolVarP(&flags.Detach, "detach", "d", false, fmt.Sprintf("run in the background and return immediately (stop with %s)", releaseCommand))
 	cmd.Flags().StringVarP(&flags.Output, "output", "o", "text", "output format: text or json")
 }
 

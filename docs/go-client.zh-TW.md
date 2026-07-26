@@ -102,6 +102,8 @@ variables、套用與 `tul` 相同的 port、path 與 output 驗證，且不會�
 path 擴大成 wildcard。
 
 `ClaimUse`、`ClaimShort` 與 `ClaimExample` 提供 canonical command help。
+Release command 不是 `tul release` 的 embedding command 應使用
+`BindClaimFlagsWithReleaseCommand`。
 `BindListFlags` 和 `BindReleaseFlags` 提供對應的 `tul list` 與
 `tul release` contracts。Foreground 與 detached lifecycle behavior
 以及 selected output format 的 rendering 仍由 embedding application 負責。

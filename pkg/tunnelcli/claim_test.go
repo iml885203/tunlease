@@ -55,6 +55,15 @@ func TestBindClaimFlagsUsesTulAliases(t *testing.T) {
 	}
 }
 
+func TestBindClaimFlagsUsesEmbeddingReleaseCommand(t *testing.T) {
+	cmd := &cobra.Command{Use: "claim"}
+	var flags ClaimFlags
+	BindClaimFlagsWithReleaseCommand(cmd, &flags, "orbit tunnel release")
+	if got := cmd.Flags().Lookup("detach").Usage; got != "run in the background and return immediately (stop with orbit tunnel release)" {
+		t.Fatalf("detach usage = %q", got)
+	}
+}
+
 func TestClaimFlagsOptionsUseEnvironmentFallbacks(t *testing.T) {
 	t.Setenv("TUNLEASE_GATEWAY", "env-gateway.example")
 	t.Setenv("TUNLEASE_TOKEN", "env-secret")
