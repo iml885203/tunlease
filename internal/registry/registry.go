@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/iml885203/tunlease/internal/claimpath"
 )
 
 var (
@@ -17,8 +19,8 @@ var (
 )
 
 const (
-	MaxPathsPerClaim = 8
-	MaxPathLength    = 512
+	MaxPathsPerClaim = claimpath.MaxPathsPerClaim
+	MaxPathLength    = claimpath.MaxPathLength
 )
 
 type Conflict struct {
@@ -93,92 +95,13 @@ func NewMemory(options Options, logger *slog.Logger) *Memory {
 }
 
 func ValidPath(path string) bool {
-	base := pathBase(path)
-	return strings.HasPrefix(path, "/") &&
-		base != "" &&
-		base != "/" &&
-		len(path) <= MaxPathLength &&
-		!strings.HasSuffix(path, "/") &&
-		!strings.Contains(base, "*")
-}
-
-type pathKind uint8
-
-const (
-	exactPath pathKind = iota
-	singleLevelPath
-	recursivePath
-)
-
-func splitPath(path string) (string, pathKind) {
-	if strings.HasSuffix(path, "/**") {
-		return strings.TrimSuffix(path, "/**"), recursivePath
-	}
-	if strings.HasSuffix(path, "/*") {
-		return strings.TrimSuffix(path, "/*"), singleLevelPath
-	}
-	return path, exactPath
-}
-
-func pathBase(path string) string {
-	base, _ := splitPath(path)
-	return base
-}
-
-func pathSegments(path string) int {
-	trimmed := strings.TrimPrefix(pathBase(path), "/")
-	if trimmed == "" {
-		return 0
-	}
-	return len(strings.Split(trimmed, "/"))
-}
-
-func matches(pattern, path string) bool {
-	base, kind := splitPath(pattern)
-	switch kind {
-	case recursivePath:
-		return path == base || strings.HasPrefix(path, base+"/")
-	case singleLevelPath:
-		if !strings.HasPrefix(path, base+"/") {
-			return false
-		}
-		child := strings.TrimPrefix(path, base+"/")
-		return child != "" && !strings.Contains(child, "/")
-	default:
-		return path == base
-	}
+	return claimpath.Valid(path)
 }
 
 // MatchPath reports whether a request path belongs to a claim pattern and
 // returns the pattern's specificity for narrowest-match selection.
 func MatchPath(pattern, requestPath string) (specificity int, ok bool) {
-	requestPath = strings.TrimRight(requestPath, "/")
-	if requestPath == "" {
-		requestPath = "/"
-	}
-	base := pathBase(pattern)
-	return len(base), matches(pattern, requestPath)
-}
-
-func overlap(a, b string) bool {
-	aBase, aKind := splitPath(a)
-	bBase, bKind := splitPath(b)
-	if aKind == exactPath {
-		return matches(b, aBase)
-	}
-	if bKind == exactPath {
-		return matches(a, bBase)
-	}
-	if aKind == recursivePath && bKind == recursivePath {
-		return matches(a, bBase) || matches(b, aBase)
-	}
-	if aKind == singleLevelPath && bKind == singleLevelPath {
-		return aBase == bBase
-	}
-	if aKind == recursivePath {
-		return matches(a, bBase) || matches(b, aBase)
-	}
-	return matches(b, aBase) || matches(a, bBase)
+	return claimpath.Match(pattern, requestPath)
 }
 
 func (m *Memory) Create(owner string, paths []string, local string) (Claim, error) {
@@ -192,12 +115,12 @@ func (m *Memory) Create(owner string, paths []string, local string) (Claim, erro
 		if !ValidPath(path) {
 			return Claim{}, ErrInvalidPath
 		}
-		if pathSegments(path) < m.minPathSegments {
+		if claimpath.Segments(path) < m.minPathSegments {
 			return Claim{}, &NotAllowed{Path: path}
 		}
 		allowed := len(m.allowed) == 0
 		for _, candidate := range m.allowed {
-			if strings.HasPrefix(pathBase(path)+"/", candidate) {
+			if strings.HasPrefix(claimpath.Base(path)+"/", candidate) {
 				allowed = true
 				break
 			}
@@ -207,7 +130,7 @@ func (m *Memory) Create(owner string, paths []string, local string) (Claim, erro
 		}
 		for _, existing := range m.claims {
 			for _, claimedPath := range existing.Paths {
-				if overlap(path, claimedPath) {
+				if claimpath.Overlap(path, claimedPath) {
 					return Claim{}, &Conflict{Owner: existing.Owner}
 				}
 			}

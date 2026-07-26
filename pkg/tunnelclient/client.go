@@ -14,11 +14,13 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/iml885203/tunlease/internal/claimpath"
 )
 
 const (
-	MaxPathsPerClaim = 8
-	MaxPathLength    = 512
+	MaxPathsPerClaim = claimpath.MaxPathsPerClaim
+	MaxPathLength    = claimpath.MaxPathLength
 )
 
 // Config configures a Client. HTTPClient is optional.
@@ -72,30 +74,7 @@ func (e *APIError) Error() string {
 // NormalizePath validates a callback path and removes a trailing slash.
 // A trailing /* matches one child segment; /** matches the whole subtree.
 func NormalizePath(path string) (string, error) {
-	path = strings.TrimSpace(path)
-	if !strings.HasPrefix(path, "/") {
-		return "", errors.New("path must start with /")
-	}
-	wildcard := ""
-	switch {
-	case strings.HasSuffix(path, "/**"):
-		wildcard = "/**"
-	case strings.HasSuffix(path, "/*"):
-		wildcard = "/*"
-	}
-	base := strings.TrimSuffix(path, wildcard)
-	base = strings.TrimRight(base, "/")
-	if base == "" {
-		return "", errors.New("root path is not allowed")
-	}
-	if strings.Contains(base, "*") {
-		return "", errors.New("wildcard is only allowed as trailing /* or /**")
-	}
-	length := len(base) + len(wildcard)
-	if length > MaxPathLength {
-		return "", fmt.Errorf("path must be at most %d bytes", MaxPathLength)
-	}
-	return base + wildcard, nil
+	return claimpath.Normalize(path)
 }
 
 // EventType identifies a lifecycle change emitted by a Session.
