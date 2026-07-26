@@ -50,12 +50,18 @@ helm upgrade --install tunlease charts/tunlease \
 Override `image.repository` and `image.tag` only when using your own build or
 release mirror.
 
-The gateway YAML fields are `listen`, one of `fail_open_url` or
-`unclaimed_status`, `disable_claim_list`, `max_claims`,
+The gateway YAML fields are `listen`, `tunnel_idle_timeout`, one of
+`fail_open_url` or `unclaimed_status`, `disable_claim_list`, `max_claims`,
 `max_claims_per_owner`, `max_claim_duration`, `min_claim_path_segments`,
 `dynamic_client_identity`, `whitelist`, and `tokens`. Unknown fields fail
 startup so removed configuration cannot be silently ignored. `/_tunlease` and
 one replica are fixed, not values.
+
+`tunnel_idle_timeout` defaults to four hours. After dispatch to a claimed
+path, every read or write extends this deadline. If the tunnel and local
+service make no progress for the full interval, the gateway closes that
+request and returns `504`; it does not limit the total duration of an active
+request or affect unclaimed traffic sent to the origin.
 
 Empty `whitelist` permits every valid path. Empty tokens disable authentication;
 all clients then share the `anonymous` owner and can list or release each

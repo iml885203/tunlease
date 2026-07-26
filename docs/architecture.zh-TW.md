@@ -60,6 +60,7 @@ gateway 送出 terminal expiry control frame、等待 client ACK、關閉 sessio
 | Path 符合 connected session | 經 yamux 送 localhost |
 | 沒有符合的 connected session | Proxy 到 origin，或回設定的固定錯誤 |
 | Dispatch 後 tunnel/local 失敗 | 回 `502 This path is claimed, but its local service is unavailable.`；不 replay |
+| Dispatched tunnel 到 `tunnel_idle_timeout` 都沒有 read/write activity | 關閉該 request 並回 `504`；不 replay |
 | Gateway 或設定的 origin unavailable | 平台 outage |
 
 Path 必須以 `/` 開頭。不含 wildcard 的 path 是 exact；結尾的 slash 會被忽略，

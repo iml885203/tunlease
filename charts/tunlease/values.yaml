@@ -14,11 +14,14 @@ ingress:
   host: callbacks.staging.example.com
   path: /
   annotations:
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "14400"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "14400"
 
 config:
   listen: ":8300"
+  # Close a dispatched tunnel request after this long without any reads or
+  # writes. Activity extends the deadline; this does not limit total duration.
+  tunnelIdleTimeout: "4h"
   # Required origin for every request without a connected matching tunnel.
   # Replace this example with the original app's cluster-internal URL.
   failOpenURL: http://callback-app.default.svc

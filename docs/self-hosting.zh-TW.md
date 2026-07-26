@@ -49,11 +49,17 @@ helm upgrade --install tunlease charts/tunlease \
 只有使用自己的 build 或 release mirror 時才覆寫 `image.repository` 與
 `image.tag`。
 
-Gateway YAML 欄位為 `listen`、`fail_open_url` 或 `unclaimed_status` 其中之一、
+Gateway YAML 欄位為 `listen`、`tunnel_idle_timeout`、`fail_open_url` 或
+`unclaimed_status` 其中之一、
 `disable_claim_list`、`max_claims`、`max_claims_per_owner`、
 `max_claim_duration`、`min_claim_path_segments`、`dynamic_client_identity`、
 `whitelist` 與 `tokens`。未知欄位會讓啟動失敗，避免舊設定被靜默忽略。
 `/_tunlease` 與單一 replica 是固定條件，不是 values。
+
+`tunnel_idle_timeout` 預設為四小時。Request dispatch 到 claimed path 後，
+每次 read 或 write 都會延後 deadline；若 tunnel 與 local service 在完整區間內
+都沒有進度，gateway 會關閉該 request 並回 `504`。此設定不限制持續有 activity
+的 request 總時間，也不影響送往 origin 的 unclaimed traffic。
 
 空 whitelist 允許所有合法 path。空 tokens 會停用認證；所有 client 共用
 `anonymous` owner，可互相 list 或 release tunnel。匿名 public demo 可設

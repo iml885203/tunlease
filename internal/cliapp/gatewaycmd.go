@@ -99,6 +99,7 @@ func runGateway(parent context.Context, configPath string) error {
 	}, logger)
 	tunnel := gatewayd.NewTunnel(store, gatewayTokens(config))
 	tunnel.DynamicClientIdentity = config.DynamicClientIdentity
+	tunnel.SetIdleTimeout(config.TunnelIdleTimeout)
 	failOpen, err := buildFailOpen(config)
 	if err != nil {
 		return err
@@ -115,9 +116,8 @@ func runGateway(parent context.Context, configPath string) error {
 	ctx, stop := signal.NotifyContext(parent, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	server := &http.Server{
-		Addr:              config.Listen,
-		Handler:           gateway.Handler(),
-		ReadHeaderTimeout: 5 * time.Second,
+		Addr:    config.Listen,
+		Handler: gateway.Handler(),
 	}
 	logger.Info("gateway listening", "addr", config.Listen, "origin", config.FailOpenURL, "unclaimed_status", config.UnclaimedStatus)
 	serveErr := make(chan error, 1)

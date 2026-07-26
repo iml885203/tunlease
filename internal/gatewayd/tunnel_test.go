@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -43,6 +44,28 @@ func TestTunnelAuthenticationModes(t *testing.T) {
 	request.Header.Del("Authorization")
 	if _, ok := authenticate(nil, true, request); ok {
 		t.Fatal("dynamic identity accepted a missing bearer secret")
+	}
+}
+
+func TestIdleConnExtendsDeadlineWhenDataKeepsMoving(t *testing.T) {
+	client, server := net.Pipe()
+	defer func() { _ = client.Close() }()
+	defer func() { _ = server.Close() }()
+
+	go func() {
+		for _, value := range []byte("abc") {
+			time.Sleep(30 * time.Millisecond)
+			_, _ = server.Write([]byte{value})
+		}
+	}()
+
+	connection := &idleConn{Conn: client, timeout: 50 * time.Millisecond}
+	var received [3]byte
+	if _, err := io.ReadFull(connection, received[:]); err != nil {
+		t.Fatal(err)
+	}
+	if string(received[:]) != "abc" {
+		t.Fatalf("received %q", received)
 	}
 }
 

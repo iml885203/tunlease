@@ -34,6 +34,8 @@ const (
 
 	targetUnavailableMessage = "This path is claimed, but its local service is unavailable.\n\n" +
 		"If this is your tunnel, check the terminal running tul."
+	targetIdleMessage = "This path is claimed, but the tunneled request was idle for too long.\n\n" +
+		"If this is your tunnel, check whether the local service is stuck."
 )
 
 type activityMessage struct {
@@ -78,6 +80,7 @@ type Tunnel struct {
 	mu                    sync.Mutex
 	sessions              map[string]*yamux.Session
 	setup                 time.Duration
+	idle                  time.Duration
 	DynamicClientIdentity bool
 }
 
@@ -87,7 +90,14 @@ func NewTunnel(store registry.Store, tokens map[string]Token) *Tunnel {
 		tokens:   tokens,
 		sessions: map[string]*yamux.Session{},
 		setup:    10 * time.Second,
+		idle:     4 * time.Hour,
 	}
+}
+
+// SetIdleTimeout bounds how long a dispatched request stream may make no
+// progress. Reads and writes each extend the deadline.
+func (t *Tunnel) SetIdleTimeout(timeout time.Duration) {
+	t.idle = timeout
 }
 
 // ActiveSessions returns the number of routable sessions.
@@ -351,13 +361,18 @@ func (t *Tunnel) ProxyByPath(w http.ResponseWriter, r *http.Request) bool {
 					_ = stream.Close()
 					return nil, err
 				}
-				return stream, nil
+				return &idleConn{Conn: stream, timeout: t.idle}, nil
 			},
 			MaxIdleConns:       1,
 			IdleConnTimeout:    5 * time.Second,
 			DisableCompression: true,
 		},
-		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, _ error) {
+		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
+			var networkError net.Error
+			if errors.As(err, &networkError) && networkError.Timeout() {
+				http.Error(w, targetIdleMessage, http.StatusGatewayTimeout)
+				return
+			}
 			http.Error(w, targetUnavailableMessage, http.StatusBadGateway)
 		},
 	}
@@ -375,6 +390,25 @@ func (t *Tunnel) ProxyByPath(w http.ResponseWriter, r *http.Request) bool {
 	}
 	go sendActivity(session, activity)
 	return true
+}
+
+type idleConn struct {
+	net.Conn
+	timeout time.Duration
+}
+
+func (c *idleConn) Read(p []byte) (int, error) {
+	if c.timeout > 0 {
+		_ = c.SetReadDeadline(time.Now().Add(c.timeout))
+	}
+	return c.Conn.Read(p)
+}
+
+func (c *idleConn) Write(p []byte) (int, error) {
+	if c.timeout > 0 {
+		_ = c.SetWriteDeadline(time.Now().Add(c.timeout))
+	}
+	return c.Conn.Write(p)
 }
 
 func sendActivity(session *yamux.Session, activity activityMessage) {

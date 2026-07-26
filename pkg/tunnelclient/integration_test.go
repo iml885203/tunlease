@@ -185,6 +185,44 @@ func TestUnavailableLocalTargetReturnsDescriptiveBadGatewayAndEvent(t *testing.T
 	}
 }
 
+func TestIdleLocalTargetReturnsDescriptiveGatewayTimeout(t *testing.T) {
+	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(time.Second)
+		_, _ = io.WriteString(w, "too late")
+	}))
+	defer local.Close()
+
+	gateway := newTestGateway(t, []string{"/test/"})
+	gateway.tunnel.SetIdleTimeout(50 * time.Millisecond)
+	client, err := tunnelclient.New(tunnelclient.Config{
+		Gateway: gateway.http.URL, HTTPClient: gateway.http.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.Start(context.Background(), []string{"/test/idle/*"}, mustPort(t, local.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = session.Close() }()
+
+	response, err := gateway.http.Client().Get(gateway.http.URL + "/test/idle/hook")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, readErr := io.ReadAll(response.Body)
+	_ = response.Body.Close()
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if response.StatusCode != http.StatusGatewayTimeout {
+		t.Fatalf("status = %d, body = %q", response.StatusCode, body)
+	}
+	if !strings.Contains(string(body), "tunneled request was idle for too long") {
+		t.Fatalf("body = %q", body)
+	}
+}
+
 func TestSessionReconnectReplacesClaim(t *testing.T) {
 	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, "local")

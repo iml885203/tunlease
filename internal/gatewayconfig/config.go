@@ -16,6 +16,7 @@ type Token struct {
 // whole-host gateway, an in-memory active-tunnel registry, and one origin.
 type Config struct {
 	Listen                string        `yaml:"listen"`
+	TunnelIdleTimeout     time.Duration `yaml:"tunnel_idle_timeout"`
 	MaxClaims             int           `yaml:"max_claims"`
 	MaxClaimsPerOwner     int           `yaml:"max_claims_per_owner"`
 	MaxClaimDuration      time.Duration `yaml:"max_claim_duration"`
@@ -35,9 +36,15 @@ func (c *Config) Defaults() {
 	if c.MaxClaims == 0 {
 		c.MaxClaims = 64
 	}
+	if c.TunnelIdleTimeout == 0 {
+		c.TunnelIdleTimeout = 4 * time.Hour
+	}
 }
 
 func (c Config) Validate() error {
+	if c.TunnelIdleTimeout < 0 {
+		return errors.New("tunnel_idle_timeout must not be negative")
+	}
 	if c.MaxClaims < 1 {
 		return errors.New("max_claims must be greater than 0")
 	}

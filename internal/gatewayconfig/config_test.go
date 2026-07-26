@@ -10,7 +10,7 @@ import (
 func TestDefaultsAndValidation(t *testing.T) {
 	config := Config{FailOpenURL: "http://app.default.svc"}
 	config.Defaults()
-	if config.Listen != ":8300" || config.MaxClaims != 64 {
+	if config.Listen != ":8300" || config.MaxClaims != 64 || config.TunnelIdleTimeout != 4*time.Hour {
 		t.Fatalf("defaults = %+v", config)
 	}
 	if err := config.Validate(); err != nil {
@@ -60,11 +60,18 @@ func TestTokenValidation(t *testing.T) {
 
 func TestDurationConfiguration(t *testing.T) {
 	var config Config
-	if err := yaml.Unmarshal([]byte("max_claim_duration: 1m\n"), &config); err != nil {
+	if err := yaml.Unmarshal([]byte("max_claim_duration: 1m\ntunnel_idle_timeout: 45s\n"), &config); err != nil {
 		t.Fatal(err)
 	}
 	if config.MaxClaimDuration != time.Minute {
 		t.Fatalf("max claim duration = %s", config.MaxClaimDuration)
+	}
+	if config.TunnelIdleTimeout != 45*time.Second {
+		t.Fatalf("tunnel idle timeout = %s", config.TunnelIdleTimeout)
+	}
+	config = Config{MaxClaims: 64, FailOpenURL: "http://app", TunnelIdleTimeout: -time.Second}
+	if err := config.Validate(); err == nil {
+		t.Fatal("negative tunnel idle timeout passed validation")
 	}
 }
 
