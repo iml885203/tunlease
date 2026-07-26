@@ -44,8 +44,9 @@ make e2e
 ## Pull requests
 
 - Keep changes focused; one logical change per pull request.
-- Match the surrounding code style. Comments are written in English and kept
-  minimal.
+- Follow the domain, error, concurrency, and abstraction guidance in
+  [`docs/code-conventions.md`](docs/code-conventions.md). Match the surrounding
+  code style; comments are written in English and kept minimal.
 - Add or update tests for behaviour changes.
 - Make sure `make preflight` passes.
 - Describe the motivation and the observable change in the PR description.
