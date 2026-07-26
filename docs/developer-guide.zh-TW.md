@@ -77,9 +77,22 @@ export TUNLEASE_TOKEN=YOUR_TOKEN
 tul claim '/webhooks/provider/callback/*' --to 8080
 ```
 
-不加 wildcard 時只 claim 一條 exact path。`/callback` 與 `/callback/` 等同；
-`/callback/*` 只符合一層子 path segment，`/callback/**` 則符合 callback path
-本身與任意深度的所有子路徑。
+Wildcard 依 path segment 比對，不是 HTTP prefix 的簡寫。`/callback` 與
+`/callback/` 等同。
+
+| Claim | 符合 | 不符合 |
+|---|---|---|
+| `/callback` | `/callback` | `/callback/a` |
+| `/callback/*` | `/callback/a` | `/callback`、`/callback/a/b` |
+| `/callback/**` | `/callback`、`/callback/a`、`/callback/a/b` | — |
+
+若要同時 claim base path 與剛好一層子路徑，請傳入兩條 path：
+
+```bash
+tul claim /callback '/callback/*' --to 8080
+```
+
+Gateway root 不可被 claim，因此 `/*` 與 `/**` 會被拒絕。
 
 Gateway URL 只填 host；client 會加入固定的 `/_tunlease`。預設使用 HTTPS，
 只有本機開發才明確填 `http://`。

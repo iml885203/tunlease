@@ -81,9 +81,22 @@ export TUNLEASE_TOKEN=YOUR_TOKEN
 tul claim '/webhooks/provider/callback/*' --to 8080
 ```
 
-Omit a wildcard to claim only one exact path. `/callback` and `/callback/` are
-equivalent. `/callback/*` matches exactly one child segment, while
-`/callback/**` matches the callback path and all descendants at any depth.
+Wildcards match path segments; they are not HTTP prefix shorthand.
+`/callback` and `/callback/` are equivalent.
+
+| Claim | Matches | Does not match |
+|---|---|---|
+| `/callback` | `/callback` | `/callback/a` |
+| `/callback/*` | `/callback/a` | `/callback`, `/callback/a/b` |
+| `/callback/**` | `/callback`, `/callback/a`, `/callback/a/b` | — |
+
+To claim the base path and exactly one child level, pass both paths:
+
+```bash
+tul claim /callback '/callback/*' --to 8080
+```
+
+The gateway root cannot be claimed, so `/*` and `/**` are rejected.
 
 The gateway URL is the bare host; the client adds fixed `/_tunlease`. HTTPS is
 the default. Use an explicit `http://` only for local development.

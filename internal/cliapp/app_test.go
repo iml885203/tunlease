@@ -183,6 +183,25 @@ func TestHelpShowsHappyPathAndSeparatesOperatorCommand(t *testing.T) {
 	}
 }
 
+func TestClaimHelpExplainsWildcardBoundaries(t *testing.T) {
+	command := NewCommandWithVersion("dev", "unknown")
+	var out bytes.Buffer
+	command.SetOut(&out)
+	command.SetArgs([]string{"claim", "--help"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"/foo/* matches /foo/bar, but not /foo or /foo/bar/baz",
+		"/foo/** matches /foo and every descendant",
+		"tul claim '/foo' '/foo/*' -p 8080",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("claim help does not contain %q:\n%s", want, out.String())
+		}
+	}
+}
+
 func TestCheckLocalTarget(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

@@ -82,8 +82,14 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 		Example: `  # Forward one exact path
   tul claim '/webhooks/provider' -p 8080 -g callbacks.example.com
 
-  # Use /* for one child segment, or /** for every descendant
-  tul claim '/webhooks/*' -p 8080`,
+  # /foo/* matches /foo/bar, but not /foo or /foo/bar/baz
+  tul claim '/foo/*' -p 8080
+
+  # /foo/** matches /foo and every descendant
+  tul claim '/foo/**' -p 8080
+
+  # Claim the base path and exactly one child level
+  tul claim '/foo' '/foo/*' -p 8080`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := validateOutput(output); err != nil {
