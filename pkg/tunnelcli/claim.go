@@ -5,6 +5,7 @@ package tunnelcli
 import (
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/iml885203/tunlease/pkg/tunnelclient"
 	"github.com/spf13/cobra"
@@ -54,6 +55,13 @@ func (flags ClaimFlags) Options(paths []string) (ClaimOptions, error) {
 		}
 		normalized = append(normalized, canonical)
 	}
+	if flags.Gateway == "" {
+		flags.Gateway = os.Getenv("TUNLEASE_GATEWAY")
+	}
+	if flags.Token == "" {
+		flags.Token = os.Getenv("TUNLEASE_TOKEN")
+	}
+	flags.Insecure = flags.Insecure || os.Getenv("TUNLEASE_INSECURE") != ""
 	return ClaimOptions{
 		Paths: normalized, To: flags.To, Gateway: flags.Gateway,
 		Token: flags.Token, Insecure: flags.Insecure,

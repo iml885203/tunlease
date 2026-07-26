@@ -101,6 +101,7 @@ tunnelcli.BindClaimFlags(cmd, &flags)
 ```
 
 This binds `-p/--to`, `-g/--gateway`, `-t/--token`, and `-k/--insecure`.
-`ClaimFlags.Options` applies the same port and path validation as `tul` without
-widening exact paths into wildcards. Process lifecycle and output flags remain
-the embedding application's responsibility.
+`ClaimFlags.Options` applies the same port and path validation as `tul`, reads
+the corresponding `TUNLEASE_*` environment variables when flags are absent,
+and does not widen exact paths into wildcards. Process lifecycle and output
+flags remain the embedding application's responsibility.

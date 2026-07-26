@@ -54,3 +54,32 @@ func TestBindClaimFlagsUsesTulAliases(t *testing.T) {
 		t.Fatalf("flags = %#v", flags)
 	}
 }
+
+func TestClaimFlagsOptionsUseEnvironmentFallbacks(t *testing.T) {
+	t.Setenv("TUNLEASE_GATEWAY", "env-gateway.example")
+	t.Setenv("TUNLEASE_TOKEN", "env-secret")
+	t.Setenv("TUNLEASE_INSECURE", "1")
+
+	options, err := (ClaimFlags{To: 8080}).Options([]string{"/foo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if options.Gateway != "env-gateway.example" || options.Token != "env-secret" || !options.Insecure {
+		t.Fatalf("options = %#v", options)
+	}
+}
+
+func TestClaimFlagsOverrideEnvironment(t *testing.T) {
+	t.Setenv("TUNLEASE_GATEWAY", "env-gateway.example")
+	t.Setenv("TUNLEASE_TOKEN", "env-secret")
+
+	options, err := (ClaimFlags{
+		To: 8080, Gateway: "flag-gateway.example", Token: "flag-secret",
+	}).Options([]string{"/foo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if options.Gateway != "flag-gateway.example" || options.Token != "flag-secret" {
+		t.Fatalf("options = %#v", options)
+	}
+}

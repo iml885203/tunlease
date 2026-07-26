@@ -96,5 +96,6 @@ tunnelcli.BindClaimFlags(cmd, &flags)
 ```
 
 這會綁定 `-p/--to`、`-g/--gateway`、`-t/--token` 與 `-k/--insecure`。
-`ClaimFlags.Options` 會套用與 `tul` 相同的 port 和 path 驗證，且不會把
-exact path 擴大成 wildcard。Process lifecycle 與輸出 flags 仍由嵌入應用程式負責。
+Flags 未提供時，`ClaimFlags.Options` 會讀取對應的 `TUNLEASE_*` environment
+variables、套用與 `tul` 相同的 port 和 path 驗證，且不會把 exact path
+擴大成 wildcard。Process lifecycle 與輸出 flags 仍由嵌入應用程式負責。
