@@ -5,7 +5,6 @@ package tunnelcli
 import (
 	"errors"
 	"fmt"
-	"os"
 
 	"github.com/iml885203/tunlease/pkg/tunnelclient"
 	"github.com/spf13/cobra"
@@ -17,6 +16,8 @@ type ClaimFlags struct {
 	Gateway  string
 	Token    string
 	Insecure bool
+	Detach   bool
+	Output   string
 }
 
 // ClaimOptions is a validated claim request. Paths retain Tunlease's exact,
@@ -27,6 +28,8 @@ type ClaimOptions struct {
 	Gateway  string
 	Token    string
 	Insecure bool
+	Detach   bool
+	Output   string
 }
 
 // BindClaimFlags adds Tunlease's shared claim flags to cmd.
@@ -35,6 +38,8 @@ func BindClaimFlags(cmd *cobra.Command, flags *ClaimFlags) {
 	cmd.Flags().StringVarP(&flags.Gateway, "gateway", "g", "", "gateway base URL (env TUNLEASE_GATEWAY)")
 	cmd.Flags().StringVarP(&flags.Token, "token", "t", "", "API token (env TUNLEASE_TOKEN)")
 	cmd.Flags().BoolVarP(&flags.Insecure, "insecure", "k", false, "skip gateway TLS verification, e.g. a self-signed gateway (env TUNLEASE_INSECURE)")
+	cmd.Flags().BoolVarP(&flags.Detach, "detach", "d", false, "run in the background and return immediately (stop with tul release)")
+	cmd.Flags().StringVarP(&flags.Output, "output", "o", "text", "output format: text or json")
 }
 
 // Options validates the flags and canonicalizes paths without widening their
@@ -46,6 +51,12 @@ func (flags ClaimFlags) Options(paths []string) (ClaimOptions, error) {
 	if len(paths) == 0 || len(paths) > tunnelclient.MaxPathsPerClaim {
 		return ClaimOptions{}, fmt.Errorf("between 1 and %d paths are required", tunnelclient.MaxPathsPerClaim)
 	}
+	if flags.Output == "" {
+		flags.Output = "text"
+	}
+	if err := ValidateOutput(flags.Output); err != nil {
+		return ClaimOptions{}, err
+	}
 
 	normalized := make([]string, 0, len(paths))
 	for _, path := range paths {
@@ -55,15 +66,10 @@ func (flags ClaimFlags) Options(paths []string) (ClaimOptions, error) {
 		}
 		normalized = append(normalized, canonical)
 	}
-	if flags.Gateway == "" {
-		flags.Gateway = os.Getenv("TUNLEASE_GATEWAY")
-	}
-	if flags.Token == "" {
-		flags.Token = os.Getenv("TUNLEASE_TOKEN")
-	}
-	flags.Insecure = flags.Insecure || os.Getenv("TUNLEASE_INSECURE") != ""
+	flags.Gateway, flags.Token, flags.Insecure = resolveClient(flags.Gateway, flags.Token, flags.Insecure)
 	return ClaimOptions{
 		Paths: normalized, To: flags.To, Gateway: flags.Gateway,
-		Token: flags.Token, Insecure: flags.Insecure,
+		Token: flags.Token, Insecure: flags.Insecure, Detach: flags.Detach,
+		Output: flags.Output,
 	}, nil
 }

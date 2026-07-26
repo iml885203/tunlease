@@ -95,7 +95,13 @@ cmd := &cobra.Command{
 tunnelcli.BindClaimFlags(cmd, &flags)
 ```
 
-這會綁定 `-p/--to`、`-g/--gateway`、`-t/--token` 與 `-k/--insecure`。
+這會綁定完整的 `tul claim` flag set：`-p/--to`、`-g/--gateway`、
+`-t/--token`、`-k/--insecure`、`-d/--detach` 與 `-o/--output`。
 Flags 未提供時，`ClaimFlags.Options` 會讀取對應的 `TUNLEASE_*` environment
-variables、套用與 `tul` 相同的 port 和 path 驗證，且不會把 exact path
-擴大成 wildcard。Process lifecycle 與輸出 flags 仍由嵌入應用程式負責。
+variables、套用與 `tul` 相同的 port、path 與 output 驗證，且不會把 exact
+path 擴大成 wildcard。
+
+`ClaimUse`、`ClaimShort` 與 `ClaimExample` 提供 canonical command help。
+`BindListFlags` 和 `BindReleaseFlags` 提供對應的 `tul list` 與
+`tul release` contracts。Foreground 與 detached lifecycle behavior
+以及 selected output format 的 rendering 仍由 embedding application 負責。

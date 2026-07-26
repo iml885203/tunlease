@@ -30,14 +30,6 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 		&cobra.Group{ID: "developer", Title: "Developer commands:"},
 		&cobra.Group{ID: "operator", Title: "Platform operator commands:"},
 	)
-	// Client flags live on the client subcommands (claim/list/release), not on
-	// root, so the gateway subcommand doesn't inherit irrelevant client flags.
-	addClientFlags := func(c *cobra.Command) {
-		c.Flags().StringVarP(&gateway, "gateway", "g", "", "gateway base URL (env TUNLEASE_GATEWAY)")
-		c.Flags().StringVarP(&token, "token", "t", "", "API token (env TUNLEASE_TOKEN)")
-		c.Flags().BoolVarP(&insecure, "insecure", "k", false, "skip gateway TLS verification, e.g. a self-signed gateway (env TUNLEASE_INSECURE)")
-		c.Flags().StringVarP(&output, "output", "o", "text", "output format: text or json")
-	}
 	get := func() (*tunnelclient.Client, error) {
 		c, err := loadConfig()
 		if err != nil {
@@ -75,33 +67,20 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 	}
 
 	var claimFlags tunnelcli.ClaimFlags
-	var detach, daemon bool
+	var daemon bool
 	claimCmd := &cobra.Command{
-		Use:     "claim PATH [PATH...] --to PORT",
-		Short:   "Temporarily forward callback path(s) to localhost",
+		Use:     tunnelcli.ClaimUse,
+		Short:   tunnelcli.ClaimShort,
 		GroupID: "developer",
-		Example: `  # Forward one exact path
-  tul claim '/webhooks/provider' -p 8080 -g callbacks.example.com
-
-  # /foo/* matches /foo/bar, but not /foo or /foo/bar/baz
-  tul claim '/foo/*' -p 8080
-
-  # /foo/** matches /foo and every descendant
-  tul claim '/foo/**' -p 8080
-
-  # Claim the base path and exactly one child level
-  tul claim '/foo' '/foo/*' -p 8080`,
-		Args: cobra.MinimumNArgs(1),
+		Example: tunnelcli.ClaimExample("tul claim"),
+		Args:    cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := validateOutput(output); err != nil {
-				return err
-			}
-			ui := newConsoleOutput(cmd.OutOrStdout(), cmd.ErrOrStderr(), output)
 			options, err := claimFlags.Options(args)
 			if err != nil {
 				return err
 			}
-			gateway, token, insecure = options.Gateway, options.Token, options.Insecure
+			gateway, token, insecure, output = options.Gateway, options.Token, options.Insecure, options.Output
+			ui := newConsoleOutput(cmd.OutOrStdout(), cmd.ErrOrStderr(), output)
 			c, e := get()
 			if e != nil {
 				return e
@@ -116,7 +95,7 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 					ui.warning("WARNING: localhost:%d is not accepting connections; start the service to receive requests", options.To)
 				}
 			}
-			if detach {
+			if options.Detach {
 				// Non-blocking: spawn a background daemon and return once the
 				// tunnel is up. Pass the connection options through explicitly.
 				scheme := os.Getenv("TUNLEASE_DEFAULT_SCHEME")
@@ -133,70 +112,63 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 		},
 	}
 	tunnelcli.BindClaimFlags(claimCmd, &claimFlags)
-	claimCmd.Flags().BoolVarP(&detach, "detach", "d", false, "run in the background and return immediately (stop with tul release)")
 	claimCmd.Flags().BoolVar(&daemon, "_daemon", false, "")
 	_ = claimCmd.Flags().MarkHidden("_daemon")
 	_ = claimCmd.MarkFlagRequired("to")
-	claimCmd.Flags().StringVarP(&output, "output", "o", "text", "output format: text or json")
 	root.AddCommand(claimCmd)
 
-	var all bool
+	var listFlags tunnelcli.ListFlags
 	listCmd := &cobra.Command{
-		Use:     "list",
-		Short:   "Show callback paths being forwarded",
+		Use:     tunnelcli.ListUse,
+		Short:   tunnelcli.ListShort,
 		GroupID: "developer",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := validateOutput(output); err != nil {
+			resolved, err := listFlags.Resolve()
+			if err != nil {
 				return err
 			}
+			gateway, token, insecure, output = resolved.Gateway, resolved.Token, resolved.Insecure, resolved.Output
 			c, e := get()
 			if e != nil {
 				return e
 			}
-			return runList(newConsoleOutput(cmd.OutOrStdout(), cmd.ErrOrStderr(), output), cmd.Context(), c, all)
+			return runList(newConsoleOutput(cmd.OutOrStdout(), cmd.ErrOrStderr(), output), cmd.Context(), c, resolved.All)
 		},
 	}
-	listCmd.Flags().BoolVarP(&all, "all", "a", false, "show all owners' claims")
-	addClientFlags(listCmd)
+	tunnelcli.BindListFlags(listCmd, &listFlags)
 	root.AddCommand(listCmd)
 
-	var relTo int
+	var releaseFlags tunnelcli.ReleaseFlags
 	releaseCmd := &cobra.Command{
-		Use:     "release [PATH]",
-		Short:   "Stop forwarding a claimed path",
+		Use:     tunnelcli.ReleaseUse,
+		Short:   tunnelcli.ReleaseShort,
 		GroupID: "developer",
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := validateOutput(output); err != nil {
+			resolved, err := releaseFlags.Resolve()
+			if err != nil {
 				return err
 			}
+			gateway, token, insecure, output = resolved.Gateway, resolved.Token, resolved.Insecure, resolved.Output
 			c, e := get()
 			if e != nil {
 				return e
 			}
-			if relTo > 0 && len(args) > 0 {
+			if resolved.To > 0 && len(args) > 0 {
 				return errors.New("specify either PATH or --to, not both")
 			}
-			if relTo == 0 && len(args) == 0 {
+			if resolved.To == 0 && len(args) == 0 {
 				return errors.New("specify a PATH or --to PORT")
 			}
-			return runRelease(newConsoleOutput(cmd.OutOrStdout(), cmd.ErrOrStderr(), output), cmd.Context(), c, args, relTo)
+			return runRelease(newConsoleOutput(cmd.OutOrStdout(), cmd.ErrOrStderr(), output), cmd.Context(), c, args, resolved.To)
 		},
 	}
-	releaseCmd.Flags().IntVarP(&relTo, "to", "p", 0, "release all claims tunnelled to this local port")
-	addClientFlags(releaseCmd)
+	tunnelcli.BindReleaseFlags(releaseCmd, &releaseFlags)
 	root.AddCommand(releaseCmd)
 
 	gatewayCmd := newGatewayCommand()
 	gatewayCmd.GroupID = "operator"
 	root.AddCommand(gatewayCmd)
 	return root
-}
-
-func validateOutput(output string) error {
-	if output != "text" && output != "json" {
-		return fmt.Errorf("output must be text or json, got %q", output)
-	}
-	return nil
 }

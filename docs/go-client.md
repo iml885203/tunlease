@@ -100,8 +100,14 @@ cmd := &cobra.Command{
 tunnelcli.BindClaimFlags(cmd, &flags)
 ```
 
-This binds `-p/--to`, `-g/--gateway`, `-t/--token`, and `-k/--insecure`.
-`ClaimFlags.Options` applies the same port and path validation as `tul`, reads
-the corresponding `TUNLEASE_*` environment variables when flags are absent,
-and does not widen exact paths into wildcards. Process lifecycle and output
-flags remain the embedding application's responsibility.
+This binds the full `tul claim` flag set: `-p/--to`, `-g/--gateway`,
+`-t/--token`, `-k/--insecure`, `-d/--detach`, and `-o/--output`.
+`ClaimFlags.Options` applies the same port, path, and output validation as
+`tul`, reads the corresponding `TUNLEASE_*` environment variables when flags
+are absent, and does not widen exact paths into wildcards.
+
+`ClaimUse`, `ClaimShort`, and `ClaimExample` provide the canonical command help.
+`BindListFlags` and `BindReleaseFlags` provide the corresponding `tul list` and
+`tul release` contracts. The embedding application remains responsible for
+implementing foreground and detached lifecycle behavior and rendering its
+selected output format.
