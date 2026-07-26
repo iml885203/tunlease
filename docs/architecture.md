@@ -90,6 +90,22 @@ is at most 512 bytes and one session may own at most 8 paths. Overlapping claim
 scopes are exclusive. The gateway forwards HTTP method, path/query, headers,
 body, and response; applications must still handle provider retries and
 duplicate delivery.
+
+For ordinary HTTP requests, forwarding is verified against a direct request to
+the application: fail-open and claimed-tunnel traffic preserve the method,
+original escaped request URI and query order, public `Host`, end-to-end
+headers (including repeated values and cookies), body bytes, response status,
+response headers (including repeated `Set-Cookie`), response body, and response
+trailers. Request bodies are streamed as they arrive, responses are streamed
+after each upstream flush rather than buffered to completion, and client
+cancellation is propagated to the selected target.
+Proxy-managed fields may differ: hop-by-hop headers are removed,
+`X-Forwarded-For` records the proxy hop, framing headers such as
+`Content-Length` may be regenerated, and the HTTP protocol version used on an
+internal hop is not an application contract. HTTP request trailers are not
+part of the v1 forwarding contract; providers must send signed metadata in
+ordinary headers or the body.
+
 After a proxied response completes, the gateway sends a best-effort activity
 event to the owning client on a separate yamux stream. It contains only the
 method, path without query, response status, and duration; activity reporting

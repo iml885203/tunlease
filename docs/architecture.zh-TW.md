@@ -82,6 +82,20 @@ Path 必須以 `/` 開頭。不含 wildcard 的 path 是 exact；結尾的 slash
 每條最多 512 bytes，一個 session 最多 8 條，重疊的 claim 範圍互斥。Gateway
 傳送 HTTP method、path/query、headers、body 與 response；app 仍須處理
 provider retry 與重複 delivery。
+
+一般 HTTP request 會以直接送到 app 的 request 作為基準驗證：fail-open 與
+claimed tunnel traffic 都會保留 method、原始 escaped request URI 與 query
+順序、public `Host`、end-to-end headers（包含重複值與 cookies）、body bytes、
+response status、response headers（包含重複的 `Set-Cookie`）、response body
+與 response trailers。Request body 會在抵達時持續以 stream 傳送，response
+也會在 upstream 每次 flush 後立即傳送，不會等完整內容才一次 buffer；client
+cancellation 會傳到已選定的 target。由 proxy 管理的欄位可以不同：hop-by-hop
+headers 會被
+移除、`X-Forwarded-For` 會記錄 proxy hop、`Content-Length` 等 framing headers
+可能重新產生，內部 hop 使用的 HTTP protocol version 也不是 app contract。
+HTTP request trailers 不屬於 v1 forwarding contract；provider 必須把簽章資料
+放在一般 headers 或 body。
+
 Proxied response 完成後，gateway 會透過獨立 yamux stream，將 best-effort
 activity event 送給 owner client。內容只有 method、不含 query 的 path、
 response status 與 duration；activity reporting 不會阻塞 response，也不會
