@@ -4,11 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/coder/websocket"
+	"github.com/hashicorp/yamux"
 )
 
 func TestNewValidatesSingleTopology(t *testing.T) {
@@ -119,8 +123,10 @@ func TestClientListAndRelease(t *testing.T) {
 
 func TestStartClaimsThroughTunnelHandshake(t *testing.T) {
 	var pathsHeader string
+	var protocolHeader string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		pathsHeader = r.Header.Get(headerPaths)
+		protocolHeader = r.Header.Get(headerProtocol)
 		w.WriteHeader(http.StatusConflict)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error": "path_claimed", "detail": "overlap", "claimed_by": "alice",
@@ -139,6 +145,101 @@ func TestStartClaimsThroughTunnelHandshake(t *testing.T) {
 	}
 	if pathsHeader != `["/callback"]` {
 		t.Fatalf("paths header = %q", pathsHeader)
+	}
+	if protocolHeader != "1" {
+		t.Fatalf("protocol header = %q", protocolHeader)
+	}
+}
+
+func TestStartReportsProtocolUpgrade(t *testing.T) {
+	for _, test := range []struct {
+		code   string
+		detail string
+	}{
+		{
+			code:   "client_upgrade_required",
+			detail: "gateway protocol 2 requires a newer Tunlease client",
+		},
+		{
+			code:   "gateway_upgrade_required",
+			detail: "client protocol 2 requires a newer Tunlease gateway",
+		},
+	} {
+		t.Run(test.code, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusUpgradeRequired)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"error": test.code, "detail": test.detail,
+				})
+			}))
+			defer server.Close()
+
+			client, err := New(Config{Gateway: server.URL, HTTPClient: server.Client()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = client.Start(context.Background(), []string{"/callback"}, 8080)
+			var apiErr *APIError
+			if !errors.As(err, &apiErr) || apiErr.Code != test.code || apiErr.Detail != test.detail {
+				t.Fatalf("Start error = %#v", err)
+			}
+		})
+	}
+}
+
+func TestStartAcceptsLegacyV1GatewayWithoutProtocolHeader(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(headerClaim, "legacy-claim")
+		w.Header().Set(headerOwner, "legacy-owner")
+		w.Header().Set(headerStarted, time.Now().UTC().Format(time.RFC3339Nano))
+		ws, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			t.Errorf("accept websocket: %v", err)
+			return
+		}
+		conn := websocket.NetConn(context.Background(), ws, websocket.MessageBinary)
+		session, err := yamux.Server(conn, yamuxConfig())
+		if err != nil {
+			t.Errorf("start yamux: %v", err)
+			return
+		}
+		defer func() { _ = session.Close() }()
+		stream, err := session.Open()
+		if err != nil {
+			t.Errorf("open readiness stream: %v", err)
+			return
+		}
+		defer func() { _ = stream.Close() }()
+		if _, err = io.WriteString(stream, "ready"); err != nil {
+			t.Errorf("write ready: %v", err)
+			return
+		}
+		var acknowledgement [3]byte
+		if _, err = io.ReadFull(stream, acknowledgement[:]); err != nil || string(acknowledgement[:]) != "ack" {
+			t.Errorf("read acknowledgement: %q, %v", acknowledgement, err)
+			return
+		}
+		if _, err = io.WriteString(stream, "ok"); err != nil {
+			t.Errorf("write confirmation: %v", err)
+			return
+		}
+		<-session.CloseChan()
+	}))
+	defer server.Close()
+
+	client, err := New(Config{Gateway: server.URL, HTTPClient: server.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.Start(context.Background(), []string{"/callback"}, 8080)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.Claim().ID != "legacy-claim" {
+		t.Fatalf("claim = %#v", session.Claim())
+	}
+	if err = session.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 

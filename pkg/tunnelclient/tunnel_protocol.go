@@ -1,6 +1,8 @@
 package tunnelclient
 
 const (
+	protocolMajor  = 1
+	headerProtocol = "X-Tunlease-Protocol"
 	headerClaim    = "X-Tunlease-Claim"
 	headerLocal    = "X-Tunlease-Local"
 	headerOwner    = "X-Tunlease-Owner"

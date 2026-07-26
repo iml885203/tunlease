@@ -25,6 +25,7 @@ type Tunnel struct {
 	sessions              map[string]*yamux.Session
 	setup                 time.Duration
 	idle                  time.Duration
+	protocol              int
 	DynamicClientIdentity bool
 }
 
@@ -35,6 +36,7 @@ func NewTunnel(store registry.Store, tokens map[string]Token) *Tunnel {
 		sessions: map[string]*yamux.Session{},
 		setup:    10 * time.Second,
 		idle:     4 * time.Hour,
+		protocol: protocolMajor,
 	}
 }
 
@@ -52,6 +54,9 @@ func (t *Tunnel) ActiveSessions() int {
 }
 
 func (t *Tunnel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !requireCompatibleProtocol(w, r, t.protocol) {
+		return
+	}
 	principal, ok := authenticate(t.tokens, t.DynamicClientIdentity, r)
 	if !ok {
 		writeTunnelError(w, http.StatusUnauthorized, "unauthorized", "valid bearer token required", nil)

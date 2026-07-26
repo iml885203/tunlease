@@ -116,6 +116,21 @@ func TestPrintErrorAddsGatewayRecoveryAction(t *testing.T) {
 	}
 }
 
+func TestProtocolErrorsIncludeUpgradeAction(t *testing.T) {
+	for _, test := range []struct {
+		code   string
+		action string
+	}{
+		{code: "client_upgrade_required", action: "Upgrade tul and retry."},
+		{code: "gateway_upgrade_required", action: "Ask the gateway operator to upgrade Tunlease."},
+	} {
+		_, _, action := errorDetails(&tunnelclient.APIError{Code: test.code, Detail: "incompatible"})
+		if action != test.action {
+			t.Errorf("%s action = %q, want %q", test.code, action, test.action)
+		}
+	}
+}
+
 func TestJSONPartialReleaseErrorIncludesSummary(t *testing.T) {
 	command := &cobra.Command{}
 	command.Flags().String("output", "json", "")

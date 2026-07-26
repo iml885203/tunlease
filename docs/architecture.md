@@ -57,6 +57,21 @@ The remaining HTTP API is:
 - `DELETE /_tunlease/api/v1/claims/{id}`
 - `GET /_tunlease/healthz`
 
+## Gateway and client compatibility
+
+Every tunnel handshake exchanges `X-Tunlease-Protocol`, whose integer value is
+the wire-protocol major version. Gateway and client releases with the same
+protocol major are bidirectionally compatible; minor and patch release
+differences do not prevent the core claim, forwarding, reconnect, list, and
+release lifecycle.
+
+A newer gateway rejects an older protocol with `client_upgrade_required`; a
+newer client receives `gateway_upgrade_required` from an older gateway. The CLI
+turns these codes into an instruction to upgrade `tul` or contact the gateway
+operator. For the v1 transition, a missing header is treated as protocol 1 so
+published v1.0 clients and gateways remain compatible. Different protocol
+majors are not expected to interoperate.
+
 ## Routing and failure contract
 
 | State | Result |

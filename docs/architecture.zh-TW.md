@@ -53,6 +53,19 @@ gateway 送出 terminal expiry control frame、等待 client ACK、關閉 sessio
 - `DELETE /_tunlease/api/v1/claims/{id}`
 - `GET /_tunlease/healthz`
 
+## Gateway 與 client 相容性
+
+每次 tunnel handshake 都會交換 `X-Tunlease-Protocol`；其整數值是 wire
+protocol 的 major version。Protocol major 相同的 gateway 與 client release
+保證雙向相容；minor 與 patch release 不同不會妨礙核心的 claim、forwarding、
+reconnect、list 與 release lifecycle。
+
+較新的 gateway 遇到較舊 protocol 會回 `client_upgrade_required`；較新的
+client 遇到較舊 gateway 則收到 `gateway_upgrade_required`。CLI 會將這些 code
+轉成升級 `tul` 或聯絡 gateway operator 的指示。v1 過渡期間，缺少 header
+視為 protocol 1，讓已發布的 v1.0 client 與 gateway 保持相容。不同 protocol
+major 不預期能互通。
+
 ## 路由與失敗契約
 
 | 狀態 | 結果 |

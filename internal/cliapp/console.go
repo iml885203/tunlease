@@ -317,6 +317,8 @@ func errorDetails(err error) (code, message, action string) {
 		"partial_release":           "Retry the same release command for the remaining paths.",
 		"claim_list_unavailable":    "This gateway does not expose claim discovery; manage locally recorded claims with tul release --to PORT.",
 		"release_pending":           "Retry the same release command; the tunnel process is reconnecting.",
+		"client_upgrade_required":   "Upgrade tul and retry.",
+		"gateway_upgrade_required":  "Ask the gateway operator to upgrade Tunlease.",
 	}[code]
 	return code, err.Error(), action
 }

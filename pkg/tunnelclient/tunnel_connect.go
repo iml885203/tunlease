@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -31,6 +32,7 @@ func dialTunnel(
 	replaces string,
 ) (*liveTunnel, Claim, error) {
 	headers := http.Header{}
+	headers.Set(headerProtocol, strconv.Itoa(protocolMajor))
 	if token != "" {
 		headers.Set("Authorization", "Bearer "+token)
 	}
@@ -62,6 +64,28 @@ func dialTunnel(
 	if response == nil {
 		_ = ws.Close(websocket.StatusProtocolError, "missing handshake response")
 		return nil, Claim{}, errors.New("gateway returned no tunnel metadata")
+	}
+	if value := response.Header.Get(headerProtocol); value != "" {
+		gatewayProtocol, parseErr := strconv.Atoi(value)
+		if parseErr != nil || gatewayProtocol < 1 {
+			_ = ws.Close(websocket.StatusProtocolError, "invalid gateway protocol")
+			return nil, Claim{}, errors.New("gateway returned an invalid Tunlease protocol")
+		}
+		if gatewayProtocol != protocolMajor {
+			_ = ws.Close(websocket.StatusProtocolError, "incompatible gateway protocol")
+			if gatewayProtocol > protocolMajor {
+				return nil, Claim{}, &APIError{
+					Status: http.StatusUpgradeRequired,
+					Code:   "client_upgrade_required",
+					Detail: fmt.Sprintf("gateway protocol %d requires a newer Tunlease client", gatewayProtocol),
+				}
+			}
+			return nil, Claim{}, &APIError{
+				Status: http.StatusUpgradeRequired,
+				Code:   "gateway_upgrade_required",
+				Detail: fmt.Sprintf("client protocol %d requires a newer Tunlease gateway", protocolMajor),
+			}
+		}
 	}
 	started, err := time.Parse(time.RFC3339Nano, response.Header.Get(headerStarted))
 	if err != nil {

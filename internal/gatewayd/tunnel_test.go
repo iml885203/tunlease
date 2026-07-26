@@ -2,6 +2,7 @@ package gatewayd
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net"
@@ -14,6 +15,62 @@ import (
 
 	"github.com/iml885203/tunlease/internal/registry"
 )
+
+func TestTunnelProtocolCompatibility(t *testing.T) {
+	for _, test := range []struct {
+		name            string
+		clientProtocol  string
+		gatewayProtocol int
+		compatible      bool
+		status          int
+		code            string
+	}{
+		{name: "legacy v1 client", gatewayProtocol: 1, compatible: true},
+		{name: "same major", clientProtocol: "1", gatewayProtocol: 1, compatible: true},
+		{
+			name: "client upgrade required", clientProtocol: "1", gatewayProtocol: 2,
+			status: http.StatusUpgradeRequired, code: "client_upgrade_required",
+		},
+		{
+			name: "gateway upgrade required", clientProtocol: "2", gatewayProtocol: 1,
+			status: http.StatusUpgradeRequired, code: "gateway_upgrade_required",
+		},
+		{
+			name: "invalid protocol", clientProtocol: "future", gatewayProtocol: 1,
+			status: http.StatusBadRequest, code: "invalid_request",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, ControlPrefix+"/tunnel", nil)
+			if test.clientProtocol != "" {
+				request.Header.Set(headerProtocol, test.clientProtocol)
+			}
+			recorder := httptest.NewRecorder()
+			compatible := requireCompatibleProtocol(recorder, request, test.gatewayProtocol)
+			if compatible != test.compatible {
+				t.Fatalf("compatible = %v, want %v", compatible, test.compatible)
+			}
+			if test.compatible {
+				if got := recorder.Header().Get(headerProtocol); got != "1" {
+					t.Fatalf("gateway protocol header = %q, want 1", got)
+				}
+				return
+			}
+			if recorder.Code != test.status {
+				t.Fatalf("status = %d, want %d", recorder.Code, test.status)
+			}
+			var body struct {
+				Code string `json:"error"`
+			}
+			if err := json.NewDecoder(recorder.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			if body.Code != test.code {
+				t.Fatalf("error code = %q, want %q", body.Code, test.code)
+			}
+		})
+	}
+}
 
 func TestTunnelAuthenticationModes(t *testing.T) {
 	request := httptest.NewRequest("GET", "/tunnel", nil)
