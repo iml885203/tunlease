@@ -149,6 +149,17 @@ func matches(pattern, path string) bool {
 	}
 }
 
+// MatchPath reports whether a request path belongs to a claim pattern and
+// returns the pattern's specificity for narrowest-match selection.
+func MatchPath(pattern, requestPath string) (specificity int, ok bool) {
+	requestPath = strings.TrimRight(requestPath, "/")
+	if requestPath == "" {
+		requestPath = "/"
+	}
+	base := pathBase(pattern)
+	return len(base), matches(pattern, requestPath)
+}
+
 func overlap(a, b string) bool {
 	aBase, aKind := splitPath(a)
 	bBase, bKind := splitPath(b)

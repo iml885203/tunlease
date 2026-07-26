@@ -121,6 +121,28 @@ func TestValidPath(t *testing.T) {
 	}
 }
 
+func TestMatchPathUsesClaimWildcardSemantics(t *testing.T) {
+	for _, test := range []struct {
+		pattern string
+		path    string
+		matches bool
+		length  int
+	}{
+		{pattern: "/callback", path: "/callback/", matches: true, length: len("/callback")},
+		{pattern: "/callback", path: "/callback/child", matches: false, length: len("/callback")},
+		{pattern: "/events/*", path: "/events/one", matches: true, length: len("/events")},
+		{pattern: "/events/*", path: "/events/one/two", matches: false, length: len("/events")},
+		{pattern: "/tree/**", path: "/tree", matches: true, length: len("/tree")},
+		{pattern: "/tree/**", path: "/tree/one/two/", matches: true, length: len("/tree")},
+	} {
+		specificity, matches := MatchPath(test.pattern, test.path)
+		if matches != test.matches || specificity != test.length {
+			t.Errorf("MatchPath(%q, %q) = %d, %v; want %d, %v",
+				test.pattern, test.path, specificity, matches, test.length, test.matches)
+		}
+	}
+}
+
 func TestExactAndWildcardConflicts(t *testing.T) {
 	store := testMemory(64, nil)
 	if _, err := store.Create("alice", []string{"/a"}, ""); err != nil {
