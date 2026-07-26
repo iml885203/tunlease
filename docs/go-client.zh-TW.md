@@ -73,3 +73,28 @@ identity 的 gateway 時，請提供穩定的隨機 `Token`。
 
 Integration test 應啟動 local HTTP server、建立 session、呼叫固定 public URL、
 驗證 local response、關閉 session，再驗證同一 request 回到 origin。
+
+## 重用 claim CLI 語意
+
+使用 Cobra 建置的應用程式可以重用 Tunlease 的 claim flags 與驗證，而不必
+採用 `tul` 的 foreground 或 detached process lifecycle：
+
+```go
+var flags tunnelcli.ClaimFlags
+cmd := &cobra.Command{
+    Use:  "claim PATH [PATH...] --to PORT",
+    Args: cobra.MinimumNArgs(1),
+    RunE: func(cmd *cobra.Command, paths []string) error {
+        options, err := flags.Options(paths)
+        if err != nil {
+            return err
+        }
+        return applicationClaim(options)
+    },
+}
+tunnelcli.BindClaimFlags(cmd, &flags)
+```
+
+這會綁定 `-p/--to`、`-g/--gateway`、`-t/--token` 與 `-k/--insecure`。
+`ClaimFlags.Options` 會套用與 `tul` 相同的 port 和 path 驗證，且不會把
+exact path 擴大成 wildcard。Process lifecycle 與輸出 flags 仍由嵌入應用程式負責。

@@ -78,3 +78,29 @@ the gateway may be inspected as `*tunnelclient.APIError`, including
 Integration tests should start a local HTTP server, establish a session, call
 the fixed public URL, verify the local response, close the session, and verify
 the same request reaches the origin.
+
+## Reusing claim CLI semantics
+
+Applications built with Cobra can reuse Tunlease's claim flags and validation
+without adopting `tul`'s foreground or detached process lifecycle:
+
+```go
+var flags tunnelcli.ClaimFlags
+cmd := &cobra.Command{
+    Use:  "claim PATH [PATH...] --to PORT",
+    Args: cobra.MinimumNArgs(1),
+    RunE: func(cmd *cobra.Command, paths []string) error {
+        options, err := flags.Options(paths)
+        if err != nil {
+            return err
+        }
+        return applicationClaim(options)
+    },
+}
+tunnelcli.BindClaimFlags(cmd, &flags)
+```
+
+This binds `-p/--to`, `-g/--gateway`, `-t/--token`, and `-k/--insecure`.
+`ClaimFlags.Options` applies the same port and path validation as `tul` without
+widening exact paths into wildcards. Process lifecycle and output flags remain
+the embedding application's responsibility.

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/iml885203/tunlease/pkg/tunnelcli"
 	"github.com/iml885203/tunlease/pkg/tunnelclient"
 	"github.com/spf13/cobra"
 )
@@ -73,7 +74,7 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 		return tunnelclient.New(clientConfig)
 	}
 
-	var to int
+	var claimFlags tunnelcli.ClaimFlags
 	var detach, daemon bool
 	claimCmd := &cobra.Command{
 		Use:     "claim PATH [PATH...] --to PORT",
@@ -96,29 +97,23 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 				return err
 			}
 			ui := newConsoleOutput(cmd.OutOrStdout(), cmd.ErrOrStderr(), output)
-			if to < 1 || to > 65535 {
-				return errors.New("local port must be between 1 and 65535")
+			options, err := claimFlags.Options(args)
+			if err != nil {
+				return err
 			}
-			paths := make([]string, 0, len(args))
-			for _, p := range args {
-				n, e := NormalizePath(p)
-				if e != nil {
-					return fmt.Errorf("%q: %w", p, e)
-				}
-				paths = append(paths, n)
-			}
+			gateway, token, insecure = options.Gateway, options.Token, options.Insecure
 			c, e := get()
 			if e != nil {
 				return e
 			}
-			if e := checkLocalTarget(to); e != nil {
+			if e := checkLocalTarget(options.To); e != nil {
 				if ui.json {
 					ui.emitJSON(ui.err, map[string]any{
 						"type": "warning", "code": "local_unavailable",
-						"message": fmt.Sprintf("localhost:%d is not accepting connections; start the service to receive requests", to),
+						"message": fmt.Sprintf("localhost:%d is not accepting connections; start the service to receive requests", options.To),
 					})
 				} else {
-					ui.warning("WARNING: localhost:%d is not accepting connections; start the service to receive requests", to)
+					ui.warning("WARNING: localhost:%d is not accepting connections; start the service to receive requests", options.To)
 				}
 			}
 			if detach {
@@ -132,17 +127,17 @@ func NewCommandWithVersion(version, buildTime string) *cobra.Command {
 					}
 					scheme = c.DefaultScheme
 				}
-				return runDetach(ui, paths, to, gateway, c.Gateway(), token, insecure || os.Getenv("TUNLEASE_INSECURE") != "", scheme)
+				return runDetach(ui, options.Paths, options.To, gateway, c.Gateway(), token, insecure || os.Getenv("TUNLEASE_INSECURE") != "", scheme)
 			}
-			return runClaim(ui, c, paths, to, daemon)
+			return runClaim(ui, c, options.Paths, options.To, daemon)
 		},
 	}
-	claimCmd.Flags().IntVarP(&to, "to", "p", 0, "local port to receive the traffic")
+	tunnelcli.BindClaimFlags(claimCmd, &claimFlags)
 	claimCmd.Flags().BoolVarP(&detach, "detach", "d", false, "run in the background and return immediately (stop with tul release)")
 	claimCmd.Flags().BoolVar(&daemon, "_daemon", false, "")
 	_ = claimCmd.Flags().MarkHidden("_daemon")
 	_ = claimCmd.MarkFlagRequired("to")
-	addClientFlags(claimCmd)
+	claimCmd.Flags().StringVarP(&output, "output", "o", "text", "output format: text or json")
 	root.AddCommand(claimCmd)
 
 	var all bool
