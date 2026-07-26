@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -23,6 +24,7 @@ type testGateway struct {
 	http   *httptest.Server
 	store  *registry.Memory
 	tunnel *gatewayd.Tunnel
+	origin *atomic.Int64
 }
 
 func newTestGateway(t *testing.T, allowed []string) *testGateway {
@@ -34,14 +36,16 @@ func newTestGatewayOptions(t *testing.T, options registry.Options) *testGateway 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	store := registry.NewMemory(options, logger)
 	tunnel := gatewayd.NewTunnel(store, nil)
+	originCalls := &atomic.Int64{}
 	origin := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		originCalls.Add(1)
 		fmt.Fprintf(w, "origin: %s", r.URL.Path)
 	})
 	server := httptest.NewServer((&gatewayd.Server{
 		Store: store, Tunnel: tunnel, FailOpen: origin,
 	}).Handler())
 	t.Cleanup(server.Close)
-	return &testGateway{http: server, store: store, tunnel: tunnel}
+	return &testGateway{http: server, store: store, tunnel: tunnel, origin: originCalls}
 }
 
 func TestClaimExpiresAtGatewayLimit(t *testing.T) {
@@ -127,6 +131,172 @@ func TestSessionDataPathFallbackAndClose(t *testing.T) {
 	}
 }
 
+func TestTunnelTransparentlyForwardsRequestAndResponse(t *testing.T) {
+	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read request body: %v", err)
+			return
+		}
+		w.Header().Set("X-Local-Response", "forwarded")
+		w.WriteHeader(http.StatusCreated)
+		fmt.Fprintf(w, "%s %s?%s %s %s", r.Method, r.URL.Path, r.URL.RawQuery, r.Header.Get("X-Provider-Signature"), body)
+	}))
+	defer local.Close()
+
+	gateway := newTestGateway(t, []string{"/test/"})
+	client, err := tunnelclient.New(tunnelclient.Config{
+		Gateway: gateway.http.URL, HTTPClient: gateway.http.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.Start(context.Background(), []string{"/test/forward/*"}, mustPort(t, local.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = session.Close() }()
+
+	request, err := http.NewRequest(http.MethodPost, gateway.http.URL+"/test/forward/hook?delivery=42", strings.NewReader(`{"ok":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Provider-Signature", "signed")
+	response, err := gateway.http.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, readErr := io.ReadAll(response.Body)
+	_ = response.Body.Close()
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if response.StatusCode != http.StatusCreated ||
+		response.Header.Get("X-Local-Response") != "forwarded" ||
+		string(body) != `POST /test/forward/hook?delivery=42 signed {"ok":true}` {
+		t.Fatalf("response: status=%d header=%q body=%q", response.StatusCode, response.Header.Get("X-Local-Response"), body)
+	}
+	if gateway.origin.Load() != 0 {
+		t.Fatalf("claimed request was also sent to origin %d time(s)", gateway.origin.Load())
+	}
+}
+
+func TestTunnelMultiplexesConcurrentRequests(t *testing.T) {
+	arrived := make(chan struct{}, 2)
+	release := make(chan struct{})
+	released := false
+	defer func() {
+		if !released {
+			close(release)
+		}
+	}()
+	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		arrived <- struct{}{}
+		<-release
+		_, _ = io.WriteString(w, "local")
+	}))
+	defer local.Close()
+
+	gateway := newTestGateway(t, []string{"/test/"})
+	client, err := tunnelclient.New(tunnelclient.Config{
+		Gateway: gateway.http.URL, HTTPClient: gateway.http.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.Start(context.Background(), []string{"/test/concurrent/*"}, mustPort(t, local.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = session.Close() }()
+
+	results := make(chan error, 2)
+	for _, path := range []string{"one", "two"} {
+		go func() {
+			response, requestErr := gateway.http.Client().Get(gateway.http.URL + "/test/concurrent/" + path)
+			if requestErr != nil {
+				results <- requestErr
+				return
+			}
+			body, readErr := io.ReadAll(response.Body)
+			_ = response.Body.Close()
+			if readErr != nil {
+				results <- readErr
+				return
+			}
+			if string(body) != "local" {
+				results <- fmt.Errorf("body = %q", body)
+				return
+			}
+			results <- nil
+		}()
+	}
+	for range 2 {
+		select {
+		case <-arrived:
+		case <-time.After(2 * time.Second):
+			t.Fatal("concurrent requests did not both reach localhost")
+		}
+	}
+	close(release)
+	released = true
+	for range 2 {
+		select {
+		case err := <-results:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("concurrent request did not complete")
+		}
+	}
+	if gateway.origin.Load() != 0 {
+		t.Fatalf("concurrent claimed requests reached origin %d time(s)", gateway.origin.Load())
+	}
+}
+
+func TestPartialLocalResponseIsNeverReplayedToOrigin(t *testing.T) {
+	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = io.WriteString(w, "partial")
+		w.(http.Flusher).Flush()
+		connection, _, err := w.(http.Hijacker).Hijack()
+		if err == nil {
+			_ = connection.Close()
+		}
+	}))
+	defer local.Close()
+
+	gateway := newTestGateway(t, []string{"/test/"})
+	client, err := tunnelclient.New(tunnelclient.Config{
+		Gateway: gateway.http.URL, HTTPClient: gateway.http.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.Start(context.Background(), []string{"/test/partial/*"}, mustPort(t, local.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = session.Close() }()
+
+	response, err := gateway.http.Client().Get(gateway.http.URL + "/test/partial/hook")
+	if err == nil {
+		if response != nil && response.Body != nil {
+			_ = response.Body.Close()
+		}
+		t.Fatal("partial local response unexpectedly completed")
+	}
+	if !strings.Contains(err.Error(), "EOF") {
+		t.Fatalf("partial response error = %v", err)
+	}
+	if gateway.origin.Load() != 0 {
+		t.Fatalf("partial dispatched response was replayed to origin %d time(s)", gateway.origin.Load())
+	}
+}
+
 func TestUnavailableLocalTargetReturnsDescriptiveBadGatewayAndEvent(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -167,6 +337,9 @@ func TestUnavailableLocalTargetReturnsDescriptiveBadGatewayAndEvent(t *testing.T
 	if string(body) != wantBody {
 		t.Fatalf("body = %q", body)
 	}
+	if gateway.origin.Load() != 0 {
+		t.Fatalf("failed dispatched request was replayed to origin %d time(s)", gateway.origin.Load())
+	}
 
 	deadline := time.After(5 * time.Second)
 	for {
@@ -186,9 +359,13 @@ func TestUnavailableLocalTargetReturnsDescriptiveBadGatewayAndEvent(t *testing.T
 }
 
 func TestIdleLocalTargetReturnsDescriptiveGatewayTimeout(t *testing.T) {
-	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		time.Sleep(time.Second)
-		_, _ = io.WriteString(w, "too late")
+	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/slow") {
+			time.Sleep(time.Second)
+			_, _ = io.WriteString(w, "too late")
+			return
+		}
+		_, _ = io.WriteString(w, "still connected")
 	}))
 	defer local.Close()
 
@@ -206,7 +383,7 @@ func TestIdleLocalTargetReturnsDescriptiveGatewayTimeout(t *testing.T) {
 	}
 	defer func() { _ = session.Close() }()
 
-	response, err := gateway.http.Client().Get(gateway.http.URL + "/test/idle/hook")
+	response, err := gateway.http.Client().Get(gateway.http.URL + "/test/idle/slow")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,6 +397,12 @@ func TestIdleLocalTargetReturnsDescriptiveGatewayTimeout(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "tunneled request was idle for too long") {
 		t.Fatalf("body = %q", body)
+	}
+	if gateway.origin.Load() != 0 {
+		t.Fatalf("timed-out dispatched request was replayed to origin %d time(s)", gateway.origin.Load())
+	}
+	if body := get(t, gateway.http, "/test/idle/fast"); body != "still connected" {
+		t.Fatalf("request after stream timeout = %q", body)
 	}
 }
 

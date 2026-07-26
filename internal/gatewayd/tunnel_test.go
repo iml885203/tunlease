@@ -112,6 +112,99 @@ func TestIncompleteTunnelHandshakeReleasesClaim(t *testing.T) {
 	}
 }
 
+func TestTunnelHandshakeValidatesAuthenticationAndHeaders(t *testing.T) {
+	store := registry.NewMemory(registry.Options{MaxClaims: 64}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	tunnel := NewTunnel(store, map[string]Token{"secret": {Owner: "alice"}})
+
+	for _, test := range []struct {
+		name  string
+		token string
+		paths string
+		local string
+		code  int
+	}{
+		{name: "authentication", paths: `["/callback"]`, local: "localhost:8080", code: http.StatusUnauthorized},
+		{name: "paths", token: "secret", paths: `not-json`, local: "localhost:8080", code: http.StatusBadRequest},
+		{name: "local target", token: "secret", paths: `["/callback"]`, code: http.StatusBadRequest},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, ControlPrefix+"/tunnel", nil)
+			if test.token != "" {
+				request.Header.Set("Authorization", "Bearer "+test.token)
+			}
+			request.Header.Set(headerPaths, test.paths)
+			request.Header.Set(headerLocal, test.local)
+			recorder := httptest.NewRecorder()
+			tunnel.ServeHTTP(recorder, request)
+			if recorder.Code != test.code {
+				t.Fatalf("status = %d, body = %q", recorder.Code, recorder.Body)
+			}
+		})
+	}
+}
+
+func TestTunnelHandshakeReportsClaimPolicyErrors(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		options  registry.Options
+		existing []string
+		paths    string
+		code     int
+	}{
+		{
+			name:    "invalid path",
+			options: registry.Options{MaxClaims: 64},
+			paths:   `["callback"]`,
+			code:    http.StatusBadRequest,
+		},
+		{
+			name:    "outside allowlist",
+			options: registry.Options{MaxClaims: 64, Allowed: []string{"/allowed/"}},
+			paths:   `["/other/callback"]`,
+			code:    http.StatusForbidden,
+		},
+		{
+			name:     "overlapping claim",
+			options:  registry.Options{MaxClaims: 64},
+			existing: []string{"/callback/**"},
+			paths:    `["/callback/*"]`,
+			code:     http.StatusConflict,
+		},
+		{
+			name:     "global claim limit",
+			options:  registry.Options{MaxClaims: 1},
+			existing: []string{"/first"},
+			paths:    `["/second"]`,
+			code:     http.StatusServiceUnavailable,
+		},
+		{
+			name:     "owner claim limit",
+			options:  registry.Options{MaxClaims: 64, MaxClaimsPerOwner: 1},
+			existing: []string{"/first"},
+			paths:    `["/second"]`,
+			code:     http.StatusTooManyRequests,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store := registry.NewMemory(test.options, slog.New(slog.NewTextHandler(io.Discard, nil)))
+			if len(test.existing) > 0 {
+				if _, err := store.Create("anonymous", test.existing, "localhost:8080"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			tunnel := NewTunnel(store, nil)
+			request := httptest.NewRequest(http.MethodGet, ControlPrefix+"/tunnel", nil)
+			request.Header.Set(headerPaths, test.paths)
+			request.Header.Set(headerLocal, "localhost:8080")
+			recorder := httptest.NewRecorder()
+			tunnel.ServeHTTP(recorder, request)
+			if recorder.Code != test.code {
+				t.Fatalf("status = %d, body = %q", recorder.Code, recorder.Body)
+			}
+		})
+	}
+}
+
 func TestMatchClaimDistinguishesExactAndWildcardPaths(t *testing.T) {
 	store := registry.NewMemory(registry.Options{MaxClaims: 64}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	exact, err := store.Create("alice", []string{"/callback"}, "")

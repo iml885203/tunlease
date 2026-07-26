@@ -19,10 +19,16 @@ CLAIM_PID=""
 LOCAL_PID=""
 
 cleanup() {
+  local status=$?
+  if [ "$status" -ne 0 ]; then
+    echo "Compose logs after E2E failure:" >&2
+    docker compose -f "$ROOT/compose.yaml" logs --no-color >&2 || true
+  fi
   [ -n "$CLAIM_PID" ] && kill "$CLAIM_PID" 2>/dev/null || true
   [ -n "$LOCAL_PID" ] && kill "$LOCAL_PID" 2>/dev/null || true
   docker compose -f "$ROOT/compose.yaml" down -v --remove-orphans >/dev/null 2>&1 || true
   rm -rf "$TMP"
+  return "$status"
 }
 trap cleanup EXIT
 
