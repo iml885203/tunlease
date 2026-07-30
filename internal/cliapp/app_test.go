@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -17,17 +18,6 @@ import (
 
 	"github.com/iml885203/tunlease/pkg/tunnelclient"
 )
-
-func TestLocalTargetErrorRemovesDialInternals(t *testing.T) {
-	err := &net.OpError{
-		Op:  "dial",
-		Net: "tcp",
-		Err: &os.SyscallError{Syscall: "connect", Err: errors.New("connection refused")},
-	}
-	if got, want := localTargetError(err), "connection refused"; got != want {
-		t.Fatalf("localTargetError() = %q, want %q", got, want)
-	}
-}
 
 // A session ends quietly only when the gateway says the claim expired or was
 // released; anything else is an error the user has to see. finishTerminalSession
@@ -58,7 +48,9 @@ func TestOnlyExpectedTerminalReasonsEndASessionQuietly(t *testing.T) {
 	}
 }
 
-func TestPrintExpectedTerminal(t *testing.T) {
+// An expiry names the time the claim ran out, in both output formats, and reports
+// nothing on stderr because it is not a failure.
+func TestExpiryNamesItsTime(t *testing.T) {
 	expiresAt := time.Date(2026, time.July, 25, 21, 30, 0, 0, time.Local)
 	claim := tunnelclient.Claim{Paths: []string{"/callback"}, ExpiresAt: &expiresAt}
 	expiryErr := &tunnelclient.APIError{Code: "claim_expired", Detail: "maximum duration reached"}
@@ -68,10 +60,10 @@ func TestPrintExpectedTerminal(t *testing.T) {
 		t.Fatalf("finishTerminalSession() = %v", err)
 	}
 	if got, want := textOut.String(), "Claim expired at 21:30:00.\n"; got != want {
-		t.Fatalf("text expiry = %q, want %q", got, want)
+		t.Errorf("text expiry = %q, want %q", got, want)
 	}
 	if textErr.Len() != 0 {
-		t.Fatalf("text expiry stderr = %q", textErr.String())
+		t.Errorf("text expiry stderr = %q", textErr.String())
 	}
 
 	var jsonOut, jsonErr bytes.Buffer
@@ -83,27 +75,10 @@ func TestPrintExpectedTerminal(t *testing.T) {
 		t.Fatal(err)
 	}
 	if event["type"] != "expired" || event["expired_at"] == nil {
-		t.Fatalf("JSON expiry = %#v", event)
+		t.Errorf("JSON expiry = %#v", event)
 	}
 	if jsonErr.Len() != 0 {
-		t.Fatalf("JSON expiry stderr = %q", jsonErr.String())
-	}
-
-	var releasedOut bytes.Buffer
-	if err := finishTerminalSession(
-		newConsole(&releasedOut, &bytes.Buffer{}),
-		&tunnelclient.APIError{Code: "claim_released", Detail: "explicitly released"},
-		claim,
-	); err != nil {
-		t.Fatalf("released finishTerminalSession() = %v", err)
-	}
-	if got, want := releasedOut.String(), "Released.\n"; got != want {
-		t.Fatalf("released text = %q, want %q", got, want)
-	}
-
-	transportErr := errors.New("connection reset")
-	if got := finishTerminalSession(newConsole(&textOut, &textErr), transportErr, claim); !errors.Is(got, transportErr) {
-		t.Fatalf("unexpected terminal error = %v", got)
+		t.Errorf("JSON expiry stderr = %q", jsonErr.String())
 	}
 }
 
@@ -123,18 +98,38 @@ func TestPrintStoppedTerminalEmitsOneLifecycleRecord(t *testing.T) {
 	}
 }
 
-func TestFormatActivityDuration(t *testing.T) {
-	tests := map[time.Duration]string{
-		0:                       "<1ms",
-		500 * time.Microsecond:  "<1ms",
-		1500 * time.Microsecond: "2ms",
-		1250 * time.Millisecond: "1.25s",
+// Request durations and dial failures are rendered into the claim session's
+// activity and warning lines. The event loop that renders them cannot be made to
+// produce a chosen duration or syscall error, so the display rules are enumerated
+// directly: sub-millisecond requests read as "<1ms", and a dial error is reduced to
+// its cause without leaking the dial internals around it.
+func TestActivityLinesRenderDurationsAndDialFailures(t *testing.T) {
+	for _, tt := range []struct {
+		duration time.Duration
+		want     string
+	}{
+		{0, "<1ms"},
+		{500 * time.Microsecond, "<1ms"},
+		{1500 * time.Microsecond, "2ms"},
+		{1250 * time.Millisecond, "1.25s"},
+	} {
+		t.Run(tt.want, func(t *testing.T) {
+			if got := formatActivityDuration(tt.duration); got != tt.want {
+				t.Errorf("a %s request reads as %q, want %q", tt.duration, got, tt.want)
+			}
+		})
 	}
-	for duration, want := range tests {
-		if got := formatActivityDuration(duration); got != want {
-			t.Errorf("formatActivityDuration(%s) = %q, want %q", duration, got, want)
+
+	t.Run("dial failure keeps only its cause", func(t *testing.T) {
+		err := &net.OpError{
+			Op:  "dial",
+			Net: "tcp",
+			Err: &os.SyscallError{Syscall: "connect", Err: errors.New("connection refused")},
 		}
-	}
+		if got, want := localTargetError(err), "connection refused"; got != want {
+			t.Errorf("dial failure reads as %q, want %q", got, want)
+		}
+	})
 }
 
 func TestNormalizePath(t *testing.T) {
@@ -200,7 +195,10 @@ func TestClaimHelpExplainsWildcardBoundaries(t *testing.T) {
 	}
 }
 
-func TestCheckLocalTarget(t *testing.T) {
+// Claiming warns when nothing is listening on the target port, so the developer
+// learns the tunnel will have nowhere to forward to. The warning is advisory: the
+// claim still proceeds to the gateway.
+func TestClaimWarnsWhenTheLocalTargetIsUnreachable(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -213,14 +211,33 @@ func TestCheckLocalTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = checkLocalTarget(port); err != nil {
-		t.Fatalf("listening target reported unavailable: %v", err)
+
+	// An unreachable gateway stops the claim right after the local-target check, so
+	// the warning is the only thing the check contributes to stderr.
+	claim := func(t *testing.T) string {
+		t.Helper()
+		t.Setenv("HOME", t.TempDir())
+		t.Setenv("TUNLEASE_STATE_FILE", filepath.Join(t.TempDir(), "state.json"))
+		command := NewCommandWithVersion("dev", "unknown")
+		var stderr bytes.Buffer
+		command.SetOut(&bytes.Buffer{})
+		command.SetErr(&stderr)
+		command.SetArgs([]string{
+			"claim", "/x", "--to", strconv.Itoa(port),
+			"--gateway", "127.0.0.1:1", "--insecure",
+		})
+		_ = command.Execute()
+		return stderr.String()
+	}
+
+	if got := claim(t); strings.Contains(got, "Could not reach localhost") {
+		t.Errorf("a listening target was reported unreachable: %q", got)
 	}
 	if err = listener.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err = checkLocalTarget(port); err == nil {
-		t.Fatal("closed target reported available")
+	if got := claim(t); !strings.Contains(got, fmt.Sprintf("localhost:%d", port)) {
+		t.Errorf("a closed target produced no warning: %q", got)
 	}
 }
 
@@ -366,23 +383,54 @@ func TestListExplainsDisabledClaimList(t *testing.T) {
 	if !errors.As(err, &unavailable) {
 		t.Fatalf("runList() error = %v", err)
 	}
-	if code, _, action := errorDetails(err); code != "claim_list_unavailable" ||
-		!strings.Contains(action, "does not expose claim discovery") {
-		t.Fatalf("errorDetails() = %q, %q", code, action)
+	var stderr bytes.Buffer
+	PrintError(&stderr, err)
+	for _, want := range []string{"claim_list_unavailable", "does not expose claim discovery"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("printed error %q does not mention %q", stderr.String(), want)
+		}
 	}
 }
 
-func TestFindDaemonClaimMatchesGatewayAndNewProcessPID(t *testing.T) {
+// Detaching waits for the daemon it just spawned to record its claim. Only the
+// entry matching the gateway, port, paths and that new process counts, so a stale
+// entry from a previous run is never mistaken for it. Reaching this through the CLI
+// would require spawning a real daemon, so the matching rule is asserted directly.
+func TestDetachRecognisesOnlyItsOwnDaemonClaim(t *testing.T) {
+	const gateway = "https://gateway/_tunlease"
 	t.Setenv("TUNLEASE_STATE_FILE", filepath.Join(t.TempDir(), "state.json"))
 	saveState(state{Claims: []stateClaim{
 		{ClaimID: "other-gateway", Gateway: "https://other/_tunlease", Paths: []string{"/x"}, To: 8080, PID: 42},
-		{ClaimID: "old-process", Gateway: "https://gateway/_tunlease", Paths: []string{"/x"}, To: 8080, PID: 41},
-		{ClaimID: "current", Gateway: "https://gateway/_tunlease", Paths: []string{"/x"}, To: 8080, PID: 42},
+		{ClaimID: "old-process", Gateway: gateway, Paths: []string{"/x"}, To: 8080, PID: 41},
+		{ClaimID: "current", Gateway: gateway, Paths: []string{"/x"}, To: 8080, PID: 42},
 	}})
 
-	got, ok := findDaemonClaim("https://gateway/_tunlease", 8080, []string{"/x"}, 42)
-	if !ok || got.ClaimID != "current" {
-		t.Fatalf("findDaemonClaim() = %#v, %v", got, ok)
+	for _, tt := range []struct {
+		name    string
+		gateway string
+		to      int
+		paths   []string
+		pid     int
+		wantID  string
+	}{
+		{name: "the claim this daemon recorded", gateway: gateway, to: 8080, paths: []string{"/x"}, pid: 42, wantID: "current"},
+		{name: "another gateway", gateway: "https://elsewhere/_tunlease", to: 8080, paths: []string{"/x"}, pid: 42},
+		{name: "another port", gateway: gateway, to: 9090, paths: []string{"/x"}, pid: 42},
+		{name: "another path", gateway: gateway, to: 8080, paths: []string{"/y"}, pid: 42},
+		{name: "a process that is not the new daemon", gateway: gateway, to: 8080, paths: []string{"/x"}, pid: 99},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := findDaemonClaim(tt.gateway, tt.to, tt.paths, tt.pid)
+			if tt.wantID == "" {
+				if ok {
+					t.Errorf("matched %q, want no match", got.ClaimID)
+				}
+				return
+			}
+			if !ok || got.ClaimID != tt.wantID {
+				t.Errorf("matched %#v, %v; want %q", got, ok, tt.wantID)
+			}
+		})
 	}
 }
 
@@ -628,8 +676,12 @@ func TestReleasePathExplainsDisabledClaimList(t *testing.T) {
 	if !errors.As(err, &unavailable) {
 		t.Fatalf("runRelease() error = %v", err)
 	}
-	if code, _, action := errorDetails(err); code != "claim_list_unavailable" || !strings.Contains(action, "release --to PORT") {
-		t.Fatalf("errorDetails() = %q, %q", code, action)
+	var stderr bytes.Buffer
+	PrintError(&stderr, err)
+	for _, want := range []string{"claim_list_unavailable", "release --to PORT"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("printed error %q does not mention %q", stderr.String(), want)
+		}
 	}
 }
 
@@ -664,74 +716,78 @@ func TestClaimReportsMissingGatewayBeforeLocalTargetWarning(t *testing.T) {
 	}
 }
 
-func TestLoadConfigMissingIsValid(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	got, err := loadConfig()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != (config{}) {
-		t.Fatalf("config = %#v", got)
-	}
-}
-
-func TestLoadConfigValid(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	content := []byte("gateway: callbacks.example.com\ntoken: secret\ninsecure: true\ndefault_scheme: http\n")
-	if err := os.WriteFile(filepath.Join(home, ".tunlease.yaml"), content, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	got, err := loadConfig()
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := config{Gateway: "callbacks.example.com", Token: "secret", Insecure: true, DefaultScheme: "http"}
-	if got != want {
-		t.Fatalf("config = %#v, want %#v", got, want)
-	}
-}
-
-func TestLoadConfigReportsInvalidFile(t *testing.T) {
-	tests := map[string]string{
-		"unknown field":  "gatewy: callbacks.example.com\n",
-		"invalid type":   "insecure: sometimes\n",
-		"invalid scheme": "default_scheme: ftp\n",
-	}
-	for name, content := range tests {
-		t.Run(name, func(t *testing.T) {
+// ~/.tunlease.yaml is read when a command needs a gateway, so a broken file has to
+// fail that command by name before anything is dialed, and a missing file has to
+// leave the command asking for a gateway instead of failing.
+func TestCommandsReportConfigFileProblemsBeforeConnecting(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		yaml      string
+		writeYAML bool
+		wantErr   string
+	}{
+		{name: "no config file", wantErr: "gateway required"},
+		{name: "unknown field", yaml: "gatewy: callbacks.example.com\n", writeYAML: true, wantErr: "field gatewy not found"},
+		{name: "invalid type", yaml: "insecure: sometimes\n", writeYAML: true},
+		{name: "invalid scheme", yaml: "default_scheme: ftp\n", writeYAML: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
 			home := t.TempDir()
 			t.Setenv("HOME", home)
+			t.Setenv("TUNLEASE_GATEWAY", "")
 			path := filepath.Join(home, ".tunlease.yaml")
-			if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-				t.Fatal(err)
+			if tt.writeYAML {
+				if err := os.WriteFile(path, []byte(tt.yaml), 0o600); err != nil {
+					t.Fatal(err)
+				}
 			}
-			_, err := loadConfig()
+
+			command := NewCommandWithVersion("dev", "unknown")
+			command.SetOut(&bytes.Buffer{})
+			command.SetErr(&bytes.Buffer{})
+			command.SetArgs([]string{"list"})
+			err := command.Execute()
 			if err == nil {
-				t.Fatal("expected an error")
+				t.Fatal("a command with no usable gateway succeeded")
 			}
-			if !strings.Contains(err.Error(), path) {
-				t.Fatalf("error %q does not identify %s", err, path)
+			if tt.writeYAML && !strings.Contains(err.Error(), path) {
+				t.Errorf("error %q does not identify %s", err, path)
+			}
+			if tt.wantErr != "" && !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error = %q, want it to mention %q", err, tt.wantErr)
 			}
 		})
 	}
 }
 
-func TestClientCommandReportsConfigErrorBeforeConnecting(t *testing.T) {
+// A valid config file supplies the gateway a command would otherwise demand.
+func TestConfigFileSuppliesTheGateway(t *testing.T) {
+	var authorized bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authorized = r.Header.Get("Authorization") == "Bearer secret"
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"claims":[]}`))
+	}))
+	defer server.Close()
+
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	path := filepath.Join(home, ".tunlease.yaml")
-	if err := os.WriteFile(path, []byte("gatewy: callbacks.example.com\n"), 0o600); err != nil {
+	t.Setenv("TUNLEASE_GATEWAY", "")
+	t.Setenv("TUNLEASE_STATE_FILE", filepath.Join(t.TempDir(), "state.json"))
+	content := "gateway: " + strings.TrimPrefix(server.URL, "http://") +
+		"\ntoken: secret\ninsecure: true\ndefault_scheme: http\n"
+	if err := os.WriteFile(filepath.Join(home, ".tunlease.yaml"), []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
 	command := NewCommandWithVersion("dev", "unknown")
+	command.SetOut(&bytes.Buffer{})
+	command.SetErr(&bytes.Buffer{})
 	command.SetArgs([]string{"list"})
-	err := command.Execute()
-	if err == nil {
-		t.Fatal("expected an error")
+	if err := command.Execute(); err != nil {
+		t.Fatalf("list with a configured gateway = %v", err)
 	}
-	if !strings.Contains(err.Error(), path) || !strings.Contains(err.Error(), "field gatewy not found") {
-		t.Fatalf("error = %q", err)
+	if !authorized {
+		t.Error("the configured token did not reach the gateway")
 	}
 }
