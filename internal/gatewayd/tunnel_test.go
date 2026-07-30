@@ -152,15 +152,16 @@ func TestTunnelAuthenticationModes(t *testing.T) {
 	}
 }
 
-// connectTunnel completes a tunnel handshake against tunnel and returns the
-// claims the gateway recorded for it.
+// connectTunnel completes a tunnel handshake against tunnel and returns the claims
+// the gateway recorded for it. The connection stays open until the test finishes,
+// because closing it releases the claim it established.
 func connectTunnel(t *testing.T, tunnel *Tunnel, store *registry.Memory, headers http.Header) []registry.Claim {
 	t.Helper()
 	server := httptest.NewServer((&Server{
 		Store: store, Tunnel: tunnel, Tokens: tunnel.tokens,
 		FailOpen: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }),
 	}).Handler())
-	defer server.Close()
+	t.Cleanup(server.Close)
 
 	ws, response, err := websocket.Dial(context.Background(),
 		"ws"+strings.TrimPrefix(server.URL, "http")+ControlPrefix+"/tunnel",
@@ -171,13 +172,30 @@ func connectTunnel(t *testing.T, tunnel *Tunnel, store *registry.Memory, headers
 	if err != nil {
 		t.Fatalf("tunnel handshake: %v", err)
 	}
-	defer func() { _ = ws.CloseNow() }()
+	t.Cleanup(func() { _ = ws.CloseNow() })
 
+	// The gateway records the claim as it finishes establishing the session, so
+	// wait for it to appear rather than assuming it is already there.
+	want := countClaims(store, headers.Get(headerPaths))
 	deadline := time.Now().Add(2 * time.Second)
-	for len(store.List()) == 0 && time.Now().Before(deadline) {
+	for !want() && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	return store.List()
+}
+
+// countClaims reports whether the store holds a claim for the requested paths.
+func countClaims(store *registry.Memory, requestedPaths string) func() bool {
+	return func() bool {
+		for _, claim := range store.List() {
+			for _, path := range claim.Paths {
+				if strings.Contains(requestedPaths, path) {
+					return true
+				}
+			}
+		}
+		return false
+	}
 }
 
 // A dynamic identity has to name the same owner every time a client reconnects

@@ -102,28 +102,28 @@ func TestClaimListCanBeDisabledWithoutDisablingRelease(t *testing.T) {
 	}
 }
 
+// With dynamic identities each client secret is its own owner, so listing shows a
+// client only what it claimed. Both claims are established through the tunnel
+// handshake so the owners are the ones the gateway itself derived.
 func TestDynamicClientIdentityListsOnlyItsClaims(t *testing.T) {
 	server, store := testServer(nil)
 	server.DynamicClientIdentity = true
 	server.Tunnel.DynamicClientIdentity = true
 
-	aliceRequest := httptest.NewRequest(http.MethodGet, "/", nil)
-	aliceRequest.Header.Set("Authorization", "Bearer alice-generated-secret")
-	alice, ok := authenticate(nil, true, aliceRequest)
-	if !ok {
-		t.Fatal("alice identity was not accepted")
+	for secret, path := range map[string]string{
+		"alice-generated-secret": `["/ok/alice/*"]`,
+		"bob-generated-secret":   `["/ok/bob/*"]`,
+	} {
+		headers := http.Header{}
+		headers.Set("Authorization", "Bearer "+secret)
+		headers.Set(headerPaths, path)
+		headers.Set(headerLocal, "localhost:1")
+		if claims := connectTunnel(t, server.Tunnel, store, headers); len(claims) == 0 {
+			t.Fatalf("handshake for %s recorded no claim", secret)
+		}
 	}
-	bobRequest := httptest.NewRequest(http.MethodGet, "/", nil)
-	bobRequest.Header.Set("Authorization", "Bearer bob-generated-secret")
-	bob, ok := authenticate(nil, true, bobRequest)
-	if !ok {
-		t.Fatal("bob identity was not accepted")
-	}
-	if _, err := store.Create(alice.Owner, []string{"/ok/alice/*"}, "localhost:1"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Create(bob.Owner, []string{"/ok/bob/*"}, "localhost:1"); err != nil {
-		t.Fatal(err)
+	if claims := store.List(); len(claims) != 2 {
+		t.Fatalf("seeded claims = %#v", claims)
 	}
 
 	code, body := request(server, http.MethodGet, ControlPrefix+"/api/v1/claims", "alice-generated-secret")
@@ -132,7 +132,7 @@ func TestDynamicClientIdentityListsOnlyItsClaims(t *testing.T) {
 		t.Fatalf("alice list: code=%d body=%v", code, body)
 	}
 	claim, _ := claims[0].(map[string]any)
-	if owner, _ := claim["owner"].(string); owner != alice.Owner {
-		t.Fatalf("alice saw owner %q", owner)
+	if paths, _ := claim["paths"].([]any); len(paths) != 1 || paths[0] != "/ok/alice/*" {
+		t.Errorf("alice saw paths %#v, want [/ok/alice/*]", claim["paths"])
 	}
 }
