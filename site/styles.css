@@ -85,6 +85,10 @@ h1 em { color: var(--blue); font-style: normal; }
 .command code { min-width: 0; overflow-x: auto; white-space: nowrap; font: 12px/1.65 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .copy { flex: none; cursor: pointer; padding: 4px 8px; color: #8fa9a2; background: transparent; border: 1px solid currentColor; border-radius: 3px; font-size: 10px; font-weight: 750; }
 .copy.copied { color: var(--mint); }
+.note { margin: 11px 0 0; color: #8fa9a2; font-size: 12px; line-height: 1.6; }
+.note strong { color: var(--mint); font-weight: 730; }
+.note code { font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.note a { color: var(--mint); text-decoration: underline; text-underline-offset: 2px; }
 .demo { margin: 0; border-top: 1px solid #20322e; background: #1e1e2e; }
 .demo img { display: block; width: 100%; height: auto; }
 

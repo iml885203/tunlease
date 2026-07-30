@@ -94,6 +94,12 @@ tul claim '/demo/my-tunnel/' -p 8080 -g tunlease-relay.dotw.me
 Ctrl+C releases it. To use your own fixed callback host instead of the public
 demo, see [Self-hosting Tunlease](docs/self-hosting.md).
 
+> [!WARNING]
+> **Don't use the public relay for a real webhook.** Claims on
+> `tunlease-relay.dotw.me` expire after **1 minute**, so the callback stops
+> arriving right away. It is only for trying the CLI. For real use, run
+> [your own gateway](docs/self-hosting.md).
+
 Use the public demo only with test traffic. Claims on your own staging gateway
 receive real callbacks, including their data and credentials. Start your local
 service first, claim the narrowest path you need, and make callback handling

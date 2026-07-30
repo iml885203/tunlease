@@ -89,6 +89,11 @@ tul claim '/demo/my-tunnel/' -p 8080 -g tunlease-relay.dotw.me
 Ctrl+C 釋放。若要使用自己的固定 callback host，而不是 public demo，請看
 [自行架設 Tunlease](docs/self-hosting.zh-TW.md)。
 
+> [!WARNING]
+> **不要用 public relay 接真的 webhook。** `tunlease-relay.dotw.me` 上的 claim
+> **1 分鐘**就過期，callback 馬上就收不到了。它只能用來試 CLI。真正要用，請架
+> [自己的 gateway](docs/self-hosting.zh-TW.md)。
+
 Public demo 只能用於測試流量。自己 staging gateway 上的 claim 會收到真實
 callback，包含其中的資料與 credential。請先啟動本機服務、只 claim 所需的
 最窄 path，並確保 callback handler idempotent：provider retry 與 request
