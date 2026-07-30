@@ -11,7 +11,7 @@
   </g>
   <text x="146" y="119" fill="#0b1715" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="40" font-weight="750">Tunlease</text>
   <text x="88" y="250" fill="#0b1715" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="72" font-weight="780" letter-spacing="-3">Debug the real webhook.</text>
-  <text x="88" y="332" fill="#176b87" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="72" font-weight="780" letter-spacing="-3">On your laptop.</text>
+  <text x="88" y="332" fill="#176b87" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="72" font-weight="780" letter-spacing="-3">On localhost.</text>
   <g transform="translate(88 420)" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="24">
     <rect width="1024" height="100" rx="10" fill="#07110f"/>
     <text x="34" y="61" fill="#e7f4ef">Provider</text>

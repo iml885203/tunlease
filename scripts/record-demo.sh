@@ -31,7 +31,7 @@ export PATH="$BIN:$PATH"
 python3 -c "
 from http.server import BaseHTTPRequestHandler, HTTPServer
 class H(BaseHTTPRequestHandler):
-    def do_GET(s): s.send_response(200); s.end_headers(); s.wfile.write(b'hello from my laptop\n')
+    def do_GET(s): s.send_response(200); s.end_headers(); s.wfile.write(b'hello from localhost\n')
     def log_message(s,*a): pass
 HTTPServer(('127.0.0.1', $PORT_LOCAL), H).serve_forever()
 " & PIDS+=($!)
@@ -53,7 +53,7 @@ VERIFY_RESULT="$TMP/relay-verified"
   sleep 7
   for _ in $(seq 1 30); do
     if curl -fsS "https://$DOMAIN$DEMO_PATH" |
-      grep -q "hello from my laptop"; then
+      grep -q "hello from localhost"; then
       touch "$VERIFY_RESULT"
       exit 0
     fi

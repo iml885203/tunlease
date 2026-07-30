@@ -9,7 +9,7 @@
 tul claim '/demo/my-tunnel/' -p 8080 -g tunlease-relay.dotw.me
 ```
 
-![在 Tunlease public demo relay claim path，並將流量轉送到 laptop 上的服務](assets/demo.gif)
+![在 Tunlease public demo relay claim path，並將流量轉送到 localhost 上的服務](assets/demo.gif)
 
 概念上類似 [ngrok](https://ngrok.com/)、
 [localtunnel](https://github.com/localtunnel/localtunnel) 與

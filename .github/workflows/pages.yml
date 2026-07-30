@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/pages.yml
       - assets/icon.svg
+      - assets/demo.gif
       - scripts/build-site.sh
       - site/**
   workflow_dispatch:

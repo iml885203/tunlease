@@ -1,15 +1,15 @@
 # <img src="assets/icon.svg" width="32" height="32" alt=""> Tunlease
 
-**Debug a webhook on your laptop using its real, unchangeable callback URL — no redeploy, no new URL.**
+**Debug a webhook on localhost using its real, unchangeable callback URL — no redeploy, no new URL.**
 
-Claim one path on an existing fixed endpoint; its live traffic reaches your
-laptop while every other path keeps serving the real app. Ctrl+C to release.
+Claim one path on an existing fixed endpoint; its live traffic reaches
+localhost while every other path keeps serving the real app. Ctrl+C to release.
 
 ```bash
 tul claim '/demo/my-tunnel/' -p 8080 -g tunlease-relay.dotw.me
 ```
 
-![Claiming a path on the public Tunlease demo relay and forwarding it to a server on your laptop](assets/demo.gif)
+![Claiming a path on the public Tunlease demo relay and forwarding it to a server on localhost](assets/demo.gif)
 
 Similar in spirit to [ngrok](https://ngrok.com/),
 [localtunnel](https://github.com/localtunnel/localtunnel), and
@@ -44,7 +44,7 @@ flowchart LR
 ```
 
 The gateway receives the fixed host's traffic and forks by path: a **claimed**
-path with a connected tunnel reaches your laptop; every other path is proxied
+path with a connected tunnel reaches localhost; every other path is proxied
 to the configured original app. Blue nodes are Tunlease's; the rest already
 exist.
 

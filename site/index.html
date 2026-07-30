@@ -47,7 +47,7 @@
   <main class="shell">
     <section class="intro">
       <div class="eyebrow"><i></i> Open source · fixed callback URLs</div>
-      <h1>Debug the real webhook.<br><em>On your laptop.</em></h1>
+      <h1>Debug the real webhook.<br><em>On localhost.</em></h1>
       <p>Claim one path on an existing callback endpoint. Its traffic reaches localhost while every other path keeps serving the real app.</p>
       <div class="links">
         <a class="button primary" href="https://github.com/iml885203/tunlease">View on GitHub</a>
@@ -80,14 +80,15 @@
       <div class="block use">
         <div class="block-title"><span>2</span> Claim your path</div>
         <div class="command">
-          <code id="claim-command">tul claim '/demo/my-webhook/' -p 8080 -g tunlease-relay.dotw.me</code>
+          <code id="claim-command">tul claim '/demo/my-tunnel/' -p 8080 -g tunlease-relay.dotw.me</code>
           <button class="copy" type="button" data-copy-target="claim-command">Copy</button>
         </div>
-        <pre><span class="success">● Connected</span>  /demo/my-webhook/ <span class="arrow">→</span> localhost:8080
-<span class="muted">  Waiting for requests… (Ctrl+C to release)</span></pre>
       </div>
 
-      <p class="note"><span>That’s it.</span> Keep the command running while you debug.</p>
+      <figure class="demo">
+        <img src="demo.gif" width="767" height="146" decoding="async"
+             alt="Running tul claim on the public demo relay: the tunnel connects and an incoming GET request returns 200 from the local server.">
+      </figure>
     </section>
   </main>
 

@@ -33,9 +33,9 @@ nav a:hover { opacity: .55; }
 main {
   min-height: calc(100vh - 132px);
   display: grid;
-  grid-template-columns: .92fr 1.08fr;
+  grid-template-columns: 1.06fr .94fr;
   align-items: center;
-  gap: clamp(44px, 7vw, 104px);
+  gap: clamp(36px, 4vw, 64px);
   padding-block: 48px;
 }
 .eyebrow {
@@ -48,7 +48,7 @@ main {
   text-transform: uppercase;
 }
 .eyebrow i { width: 8px; height: 8px; background: var(--mint); border: 2px solid var(--ink); border-radius: 50%; box-shadow: 0 0 0 4px rgba(127, 224, 207, .3); }
-h1 { margin: 20px 0 22px; font-size: clamp(54px, 6.6vw, 94px); line-height: .92; letter-spacing: -.065em; }
+h1 { margin: 20px 0 22px; font-size: clamp(40px, 4.4vw, 66px); line-height: .96; letter-spacing: -.05em; text-wrap: balance; }
 h1 em { color: var(--blue); font-style: normal; }
 .intro > p { max-width: 570px; margin: 0; color: var(--soft); font-size: clamp(17px, 1.7vw, 20px); line-height: 1.55; }
 .links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
@@ -85,11 +85,8 @@ h1 em { color: var(--blue); font-style: normal; }
 .command code { min-width: 0; overflow-x: auto; white-space: nowrap; font: 12px/1.65 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .copy { flex: none; cursor: pointer; padding: 4px 8px; color: #8fa9a2; background: transparent; border: 1px solid currentColor; border-radius: 3px; font-size: 10px; font-weight: 750; }
 .copy.copied { color: var(--mint); }
-pre { margin: 17px 0 0; font: 12px/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; }
-.success { color: var(--mint); }
-.arrow, .muted { color: #789189; }
-.note { margin: 0; padding: 13px 26px; color: #789189; background: #091512; border-top: 1px solid #20322e; font-size: 12px; }
-.note span { color: #e7f4ef; font-weight: 700; }
+.demo { margin: 0; border-top: 1px solid #20322e; background: #1e1e2e; }
+.demo img { display: block; width: 100%; height: auto; }
 
 footer {
   height: 60px;
@@ -105,7 +102,7 @@ footer {
   .shell { width: min(100% - 28px, 1180px); }
   header { height: 64px; }
   main { min-height: auto; grid-template-columns: 1fr; gap: 42px; padding-block: 56px; }
-  h1 { font-size: clamp(52px, 15vw, 78px); }
+  h1 { font-size: clamp(44px, 8.6vw, 68px); }
   .intro > p { max-width: 620px; }
   .terminal { box-shadow: 8px 9px 0 rgba(23, 107, 135, .16); }
   footer { margin-top: 36px; }
@@ -113,13 +110,12 @@ footer {
 
 @media (max-width: 480px) {
   nav { gap: 16px; font-size: 12px; }
-  h1 { font-size: clamp(47px, 14.8vw, 66px); }
+  h1 { font-size: clamp(38px, 10.4vw, 48px); }
   .route { gap: 7px; font-size: 10px; }
   .route strong { padding: 6px 7px; }
   .block { padding: 21px 17px; }
   .tabs { overflow-x: auto; }
   .tabs button { white-space: nowrap; }
-  .note { padding-inline: 17px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
