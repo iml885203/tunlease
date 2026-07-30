@@ -243,15 +243,29 @@ func TestStartAcceptsLegacyV1GatewayWithoutProtocolHeader(t *testing.T) {
 	}
 }
 
-func TestFixedControlURLs(t *testing.T) {
-	base := "https://callbacks.example.com/_tunlease"
-	api, err := joinURL(base, "/api/v1/claims")
-	if err != nil || api != "https://callbacks.example.com/_tunlease/api/v1/claims" {
-		t.Fatalf("API URL = %q, %v", api, err)
+// The control plane lives at a fixed path, so a gateway host must receive control
+// requests under /_tunlease no matter how the client was configured.
+func TestControlRequestsGoToTheFixedControlPath(t *testing.T) {
+	var got string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"claims":[]}`))
+	}))
+	defer server.Close()
+
+	client, err := New(Config{Gateway: server.URL, HTTPClient: server.Client()})
+	if err != nil {
+		t.Fatal(err)
 	}
-	tunnel, err := tunnelURL(base)
-	if err != nil || tunnel != "wss://callbacks.example.com/_tunlease/tunnel" {
-		t.Fatalf("tunnel URL = %q, %v", tunnel, err)
+	if _, err = client.List(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if want := "/_tunlease/api/v1/claims"; got != want {
+		t.Errorf("list requested %q, want %q", got, want)
+	}
+	if want := server.URL + "/_tunlease"; client.Gateway() != want {
+		t.Errorf("Gateway() = %q, want %q", client.Gateway(), want)
 	}
 }
 
