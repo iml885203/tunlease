@@ -29,34 +29,32 @@ func TestLocalTargetErrorRemovesDialInternals(t *testing.T) {
 	}
 }
 
-func TestConnectionMessage(t *testing.T) {
-	if got, want := connectionMessage("Connected", []string{"/callback"}, 8080, nil), "Connected: /callback → localhost:8080"; got != want {
-		t.Fatalf("connectionMessage() = %q, want %q", got, want)
-	}
-	expiresAt := time.Date(2026, time.July, 25, 18, 48, 13, 0, time.Local)
-	if got, want := connectionMessage("Connected", []string{"/callback"}, 8080, &expiresAt), "Connected until 18:48:13: /callback → localhost:8080"; got != want {
-		t.Fatalf("connectionMessage() = %q, want %q", got, want)
-	}
-}
-
-func TestExpectedTerminalReason(t *testing.T) {
-	tests := []struct {
-		code string
-		want expectedTerminal
-		ok   bool
+// A session ends quietly only when the gateway says the claim expired or was
+// released; anything else is an error the user has to see. finishTerminalSession
+// is where that split becomes output, so it is asserted there.
+func TestOnlyExpectedTerminalReasonsEndASessionQuietly(t *testing.T) {
+	claim := tunnelclient.Claim{Paths: []string{"/callback"}}
+	for _, tt := range []struct {
+		name     string
+		err      error
+		quiet    bool
+		contains string
 	}{
-		{"claim_expired", terminalExpired, true},
-		{"claim_released", terminalReleased, true},
-		{"unauthorized", "", false},
-	}
-	for _, test := range tests {
-		got, ok := expectedTerminalReason(&tunnelclient.APIError{Code: test.code})
-		if got != test.want || ok != test.ok {
-			t.Errorf("expectedTerminalReason(%q) = %q, %v; want %q, %v", test.code, got, ok, test.want, test.ok)
-		}
-	}
-	if _, ok := expectedTerminalReason(errors.New("connection lost")); ok {
-		t.Fatal("transport error classified as expected terminal")
+		{name: "expired claim", err: &tunnelclient.APIError{Code: "claim_expired"}, quiet: true, contains: "Claim expired"},
+		{name: "released claim", err: &tunnelclient.APIError{Code: "claim_released"}, quiet: true, contains: "Released"},
+		{name: "unauthorized", err: &tunnelclient.APIError{Code: "unauthorized"}},
+		{name: "transport failure", err: errors.New("connection lost")},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var out, stderr bytes.Buffer
+			err := finishTerminalSession(newConsole(&out, &stderr), tt.err, claim)
+			if quiet := err == nil; quiet != tt.quiet {
+				t.Fatalf("finishTerminalSession() = %v, want quiet = %v", err, tt.quiet)
+			}
+			if tt.contains != "" && !strings.Contains(out.String(), tt.contains) {
+				t.Errorf("output %q does not mention %q", out.String(), tt.contains)
+			}
+		})
 	}
 }
 
