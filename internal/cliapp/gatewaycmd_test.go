@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/iml885203/tunlease/internal/gatewayconfig"
 )
 
 // An operator meets the config rules by writing a file and starting the gateway,
@@ -88,14 +86,41 @@ func TestLoadGatewayConfigReadsDurations(t *testing.T) {
 	}
 }
 
-func TestBuildFailOpenStatus(t *testing.T) {
-	handler, err := buildFailOpen(gatewayconfig.Config{UnclaimedStatus: http.StatusNotFound})
-	if err != nil {
-		t.Fatal(err)
-	}
-	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/demo/missing", nil))
-	if recorder.Code != http.StatusNotFound {
-		t.Fatalf("status = %d", recorder.Code)
+// An unclaimed request either reaches the configured origin or gets the configured
+// status. Both are driven from the config file, so what the operator writes decides
+// what an unclaimed caller sees.
+func TestUnclaimedRequestsFollowTheConfiguredTarget(t *testing.T) {
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	defer origin.Close()
+
+	for _, tt := range []struct {
+		name string
+		yaml string
+		want int
+	}{
+		{"a status for unclaimed requests", "unclaimed_status: 404\n", http.StatusNotFound},
+		{"an origin to fall open to", "fail_open_url: " + origin.URL + "\n", http.StatusTeapot},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "gateway.yaml")
+			if err := os.WriteFile(path, []byte(tt.yaml), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			config, err := loadGatewayConfig(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			handler, err := buildFailOpen(config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/demo/missing", nil))
+			if recorder.Code != tt.want {
+				t.Errorf("unclaimed request = %d, want %d", recorder.Code, tt.want)
+			}
+		})
 	}
 }

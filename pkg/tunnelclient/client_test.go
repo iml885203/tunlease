@@ -268,15 +268,3 @@ func TestControlRequestsGoToTheFixedControlPath(t *testing.T) {
 		t.Errorf("Gateway() = %q, want %q", client.Gateway(), want)
 	}
 }
-
-func TestWaitRetryStopsOnCancellation(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	started := time.Now()
-	if waitRetry(ctx, time.Minute) {
-		t.Fatal("canceled retry reported ready")
-	}
-	if time.Since(started) > 100*time.Millisecond {
-		t.Fatal("canceled retry did not stop promptly")
-	}
-}

@@ -448,6 +448,42 @@ func TestSessionReconnectReplacesClaim(t *testing.T) {
 	}
 }
 
+// Cancelling the context a session was started with must end it promptly rather
+// than wait out the reconnect backoff.
+func TestCancellingTheSessionContextStopsReconnectPromptly(t *testing.T) {
+	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer local.Close()
+	gateway := newTestGateway(t, []string{"/test/"})
+	client, err := tunnelclient.New(tunnelclient.Config{
+		Gateway: gateway.http.URL, HTTPClient: gateway.http.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	session, err := client.Start(ctx, []string{"/test/cancelled"}, mustPort(t, local.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Drop the tunnel so the session is inside its reconnect backoff, then cancel.
+	gateway.http.CloseClientConnections()
+	cancel()
+
+	started := time.Now()
+	select {
+	case <-session.Done():
+	case <-time.After(3 * time.Second):
+		t.Fatal("cancelled session did not stop")
+	}
+	if elapsed := time.Since(started); elapsed > 2*time.Second {
+		t.Errorf("cancelled session took %s to stop", elapsed)
+	}
+}
+
 func TestExplicitReleaseStopsReconnect(t *testing.T) {
 	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, "local")
