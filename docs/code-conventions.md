@@ -99,6 +99,20 @@ callers could otherwise mutate internal state after the lock is released.
 Keep the locked region focused on state transitions. Do not hold a mutex across
 network calls, stream I/O, callbacks, or other operations that may block.
 
+## Prefer sociable unit tests and end-to-end tests
+
+Tunlease relies on two kinds of tests. Sociable unit tests drive a real entry
+point — the CLI command, the gateway HTTP handler, the exported client API — and
+let it use its real collaborators, so one case covers the chain it touches: auth,
+path validation, routing, and fallback. End-to-end tests in
+`scripts/e2e-compose.sh` cover what only appears across processes: fail-open,
+claim release after a tunnel dies, claim expiry.
+
+Avoid solitary unit tests: do not isolate a unit behind mocks to test it alone.
+Mirroring one function's branches restates the implementation, so every code
+change forces a matching test edit and the pair becomes two copies of the same
+logic. Cover unexported helpers through the entry point that uses them.
+
 ## Refactoring verification
 
 A refactor preserves observable behaviour unless the change explicitly says

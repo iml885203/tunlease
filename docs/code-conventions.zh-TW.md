@@ -92,6 +92,18 @@ caller 可能在 lock 釋放後修改內部狀態，回傳 map、slice 或含 po
 Locked region 應集中在 state transition。Network call、stream I/O、
 callback 或其他可能 blocking 的操作期間，不要持有 mutex。
 
+## 優先寫 sociable unit test 與 end-to-end test
+
+Tunlease 依賴兩種 test。Sociable unit test 由真實入口驅動——CLI command、gateway
+HTTP handler、匯出的 client API——並讓它使用真實的 collaborator，因此單一 case 能
+涵蓋它所觸及的鏈路：auth、path validation、routing 與 fallback。End-to-end test 寫
+在 `scripts/e2e-compose.sh`，涵蓋只有跨 process 才會出現的行為：fail-open、tunnel
+死亡後的 claim release、claim 過期。
+
+避免 solitary unit test：不要用 mock 把單一 unit 隔離起來測。逐一對應某個 function
+各個 branch 只是重述 implementation，因此程式碼每次修改都迫使 test 跟著改，兩者
+最終變成同一份邏輯的兩份副本。未匯出的 helper 透過使用它的入口涵蓋。
+
 ## 重構驗證
 
 除非 change 明確另有說明，refactor 必須保持 observable behaviour。編輯期間
