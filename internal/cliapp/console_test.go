@@ -101,33 +101,40 @@ func TestPrintErrorKeepsOnePlainSeverityMarker(t *testing.T) {
 	}
 }
 
-func TestPrintErrorAddsGatewayRecoveryAction(t *testing.T) {
-	var stderr bytes.Buffer
-	PrintError(&stderr, &tunnelclient.APIError{
-		Status: 403,
-		Code:   "path_not_allowed",
-		Detail: "path is outside the allowlist",
-	})
-	got := stderr.String()
-	for _, want := range []string{"Error: path_not_allowed", "path is outside the allowlist", "Ask the gateway operator for an allowed path."} {
-		if !strings.Contains(got, want) {
-			t.Errorf("PrintError() = %q, missing %q", got, want)
-		}
-	}
-}
-
-func TestProtocolErrorsIncludeUpgradeAction(t *testing.T) {
-	for _, test := range []struct {
-		code   string
+// A gateway error reaches the user as printed output, so the recovery action it
+// should suggest is asserted on what PrintError writes.
+func TestPrintErrorSuggestsARecoveryAction(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		err    *tunnelclient.APIError
 		action string
 	}{
-		{code: "client_upgrade_required", action: "Upgrade tul and retry."},
-		{code: "gateway_upgrade_required", action: "Ask the gateway operator to upgrade Tunlease."},
+		{
+			name:   "path outside the allowlist",
+			err:    &tunnelclient.APIError{Status: 403, Code: "path_not_allowed", Detail: "path is outside the allowlist"},
+			action: "Ask the gateway operator for an allowed path.",
+		},
+		{
+			name:   "client too old",
+			err:    &tunnelclient.APIError{Code: "client_upgrade_required", Detail: "incompatible"},
+			action: "Upgrade tul and retry.",
+		},
+		{
+			name:   "gateway too old",
+			err:    &tunnelclient.APIError{Code: "gateway_upgrade_required", Detail: "incompatible"},
+			action: "Ask the gateway operator to upgrade Tunlease.",
+		},
 	} {
-		_, _, action := errorDetails(&tunnelclient.APIError{Code: test.code, Detail: "incompatible"})
-		if action != test.action {
-			t.Errorf("%s action = %q, want %q", test.code, action, test.action)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			var stderr bytes.Buffer
+			PrintError(&stderr, tt.err)
+			got := stderr.String()
+			for _, want := range []string{"Error: " + tt.err.Code, tt.err.Detail, tt.action} {
+				if !strings.Contains(got, want) {
+					t.Errorf("PrintError() = %q, missing %q", got, want)
+				}
+			}
+		})
 	}
 }
 
@@ -156,40 +163,38 @@ func TestJSONPartialReleaseErrorIncludesSummary(t *testing.T) {
 	}
 }
 
-func TestNoColorDisablesColor(t *testing.T) {
-	t.Setenv("NO_COLOR", "1")
-	t.Setenv("TERM", "xterm-256color")
-	if colorPermitted() {
-		t.Fatal("NO_COLOR did not disable color")
-	}
-}
+// The environment decides whether a console emits ANSI. Output here is a buffer
+// rather than a TTY, so color appears only when FORCE_COLOR asks for it and
+// never when NO_COLOR or a dumb terminal forbids it.
+func TestEnvironmentDecidesWhetherOutputCarriesANSI(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		noColor    string
+		term       string
+		forceColor string
+		wantANSI   bool
+	}{
+		{name: "non-TTY output stays plain", term: "xterm-256color"},
+		{name: "FORCE_COLOR colors non-TTY output", term: "xterm-256color", forceColor: "1", wantANSI: true},
+		{name: "NO_COLOR overrides FORCE_COLOR", noColor: "1", term: "xterm-256color", forceColor: "1"},
+		{name: "NO_COLOR alone stays plain", noColor: "1", term: "xterm-256color"},
+		{name: "dumb terminal stays plain", term: "dumb", forceColor: "1"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("NO_COLOR", tt.noColor)
+			t.Setenv("TERM", tt.term)
+			t.Setenv("FORCE_COLOR", tt.forceColor)
 
-func TestDumbTerminalDisablesColor(t *testing.T) {
-	t.Setenv("NO_COLOR", "")
-	t.Setenv("TERM", "dumb")
-	if colorPermitted() {
-		t.Fatal("TERM=dumb did not disable color")
-	}
-}
+			var out, stderr bytes.Buffer
+			newConsole(&out, &stderr).success("Connected: %s", "/callback")
 
-func TestNormalTerminalPermitsColor(t *testing.T) {
-	t.Setenv("NO_COLOR", "")
-	t.Setenv("TERM", "xterm-256color")
-	if !colorPermitted() {
-		t.Fatal("normal terminal environment disabled color")
-	}
-}
-
-func TestForceColorForNonTTYOutput(t *testing.T) {
-	t.Setenv("NO_COLOR", "")
-	t.Setenv("TERM", "xterm-256color")
-	t.Setenv("FORCE_COLOR", "1")
-	if !supportsColor(&bytes.Buffer{}) {
-		t.Fatal("FORCE_COLOR did not enable color for non-TTY output")
-	}
-
-	t.Setenv("NO_COLOR", "1")
-	if supportsColor(&bytes.Buffer{}) {
-		t.Fatal("NO_COLOR did not override FORCE_COLOR")
+			got := out.String()
+			if !strings.Contains(got, "Connected: /callback") {
+				t.Fatalf("output lost its text: %q", got)
+			}
+			if hasANSI := strings.Contains(got, "\x1b["); hasANSI != tt.wantANSI {
+				t.Errorf("output carries ANSI = %v, want %v (%q)", hasANSI, tt.wantANSI, got)
+			}
+		})
 	}
 }
