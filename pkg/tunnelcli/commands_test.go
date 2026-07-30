@@ -14,6 +14,8 @@ func TestClaimExampleUsesEmbeddingCommand(t *testing.T) {
 	}
 }
 
+// An embedding CLI binds these flags and resolves them, so the short aliases and
+// output validation are asserted the way that host reaches them.
 func TestBindListFlagsUsesTulAliases(t *testing.T) {
 	cmd := &cobra.Command{Use: ListUse}
 	var flags ListFlags
@@ -47,8 +49,29 @@ func TestBindReleaseFlagsUsesTulAliases(t *testing.T) {
 	}
 }
 
-func TestValidateOutputRejectsUnknownFormat(t *testing.T) {
-	if err := ValidateOutput("yaml"); err == nil {
-		t.Fatal("expected output validation error")
+// Resolve is where an unknown --output has to be rejected; reaching it through
+// the flags keeps the check on the path every embedding command takes.
+func TestResolveRejectsUnknownOutputFormat(t *testing.T) {
+	for _, tt := range []struct {
+		output   string
+		accepted bool
+	}{
+		{"text", true},
+		{"json", true},
+		{"yaml", false},
+		{"xml", false},
+	} {
+		t.Run(tt.output, func(t *testing.T) {
+			cmd := &cobra.Command{Use: ListUse}
+			var flags ListFlags
+			BindListFlags(cmd, &flags)
+			if err := cmd.ParseFlags([]string{"-o", tt.output}); err != nil {
+				t.Fatal(err)
+			}
+			_, err := flags.Resolve()
+			if accepted := err == nil; accepted != tt.accepted {
+				t.Errorf("Resolve() with --output %s accepted = %v, want %v", tt.output, accepted, tt.accepted)
+			}
+		})
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -41,29 +42,38 @@ func TestTunnelProtocolCompatibility(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			store := registry.NewMemory(registry.Options{MaxClaims: 64}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+			tunnel := NewTunnel(store, nil)
+			tunnel.protocol = test.gatewayProtocol
+
 			request := httptest.NewRequest(http.MethodGet, ControlPrefix+"/tunnel", nil)
 			if test.clientProtocol != "" {
 				request.Header.Set(headerProtocol, test.clientProtocol)
 			}
+			request.Header.Set(headerPaths, `["/callback"]`)
+			request.Header.Set(headerLocal, "localhost:8080")
 			recorder := httptest.NewRecorder()
-			compatible := requireCompatibleProtocol(recorder, request, test.gatewayProtocol)
-			if compatible != test.compatible {
-				t.Fatalf("compatible = %v, want %v", compatible, test.compatible)
+			tunnel.ServeHTTP(recorder, request)
+
+			var body struct {
+				Code string `json:"error"`
 			}
+			_ = json.NewDecoder(recorder.Body).Decode(&body)
+
 			if test.compatible {
+				// Negotiation passed, so the gateway advertises its version and the
+				// handshake continues to the WebSocket upgrade, which httptest cannot
+				// perform. Only the negotiation error codes prove a rejection.
 				if got := recorder.Header().Get(headerProtocol); got != "1" {
-					t.Fatalf("gateway protocol header = %q, want 1", got)
+					t.Errorf("gateway protocol header = %q, want 1", got)
+				}
+				if body.Code != "" {
+					t.Fatalf("compatible protocol was rejected as %q", body.Code)
 				}
 				return
 			}
 			if recorder.Code != test.status {
 				t.Fatalf("status = %d, want %d", recorder.Code, test.status)
-			}
-			var body struct {
-				Code string `json:"error"`
-			}
-			if err := json.NewDecoder(recorder.Body).Decode(&body); err != nil {
-				t.Fatal(err)
 			}
 			if body.Code != test.code {
 				t.Fatalf("error code = %q, want %q", body.Code, test.code)
@@ -72,35 +82,127 @@ func TestTunnelProtocolCompatibility(t *testing.T) {
 	}
 }
 
+// Who a claim belongs to is decided during the handshake, so each authentication
+// mode is asserted by the claim the gateway records for a connecting client.
 func TestTunnelAuthenticationModes(t *testing.T) {
-	request := httptest.NewRequest("GET", "/tunnel", nil)
-	principal, ok := authenticate(nil, false, request)
-	if !ok || principal.Owner != "anonymous" {
-		t.Fatalf("anonymous principal = %#v, %v", principal, ok)
-	}
+	for _, tt := range []struct {
+		name      string
+		tokens    map[string]Token
+		dynamic   bool
+		authptr   string
+		wantOwner string
+		wantCode  int
+	}{
+		{name: "anonymous when no tokens are configured", wantOwner: "anonymous"},
+		{
+			name:   "a configured token names its owner",
+			tokens: map[string]Token{"secret": {Owner: "alice"}}, authptr: "secret", wantOwner: "alice",
+		},
+		{
+			name:   "a missing token is rejected",
+			tokens: map[string]Token{"secret": {Owner: "alice"}}, wantCode: http.StatusUnauthorized,
+		},
+		{
+			name:   "an unknown token is rejected",
+			tokens: map[string]Token{"secret": {Owner: "alice"}}, authptr: "wrong", wantCode: http.StatusUnauthorized,
+		},
+		{name: "a dynamic identity derives an owner", dynamic: true, authptr: "generated-client-secret"},
+		{name: "a dynamic identity requires a secret", dynamic: true, wantCode: http.StatusUnauthorized},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			store := registry.NewMemory(registry.Options{MaxClaims: 64}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+			tunnel := NewTunnel(store, tt.tokens)
+			tunnel.DynamicClientIdentity = tt.dynamic
 
-	tokens := map[string]Token{"secret": {Owner: "alice"}}
-	if _, ok := authenticate(tokens, false, request); ok {
-		t.Fatal("authenticated mode accepted a missing token")
-	}
-	request.Header.Set("Authorization", "Bearer secret")
-	principal, ok = authenticate(tokens, false, request)
-	if !ok || principal.Owner != "alice" {
-		t.Fatalf("token principal = %#v, %v", principal, ok)
-	}
+			request := httptest.NewRequest(http.MethodGet, ControlPrefix+"/tunnel", nil)
+			if tt.authptr != "" {
+				request.Header.Set("Authorization", "Bearer "+tt.authptr)
+			}
+			request.Header.Set(headerPaths, `["/callback"]`)
+			request.Header.Set(headerLocal, "localhost:8080")
+			if tt.wantCode != 0 {
+				recorder := httptest.NewRecorder()
+				tunnel.ServeHTTP(recorder, request)
+				if recorder.Code != tt.wantCode {
+					t.Fatalf("status = %d, want %d (%q)", recorder.Code, tt.wantCode, recorder.Body)
+				}
+				if claims := store.List(); len(claims) != 0 {
+					t.Errorf("rejected handshake recorded a claim: %#v", claims)
+				}
+				return
+			}
 
-	request.Header.Set("Authorization", "Bearer generated-client-secret")
-	first, ok := authenticate(nil, true, request)
-	if !ok || first.Owner == "" || first.Owner == "anonymous" {
-		t.Fatalf("dynamic principal = %#v, %v", first, ok)
+			// The claim is recorded once the tunnel is established, so an accepted
+			// handshake needs a real WebSocket to reach it.
+			claims := connectTunnel(t, tunnel, store, request.Header)
+			if len(claims) != 1 {
+				t.Fatalf("claims = %#v", claims)
+			}
+			switch {
+			case tt.wantOwner != "":
+				if claims[0].Owner != tt.wantOwner {
+					t.Errorf("owner = %q, want %q", claims[0].Owner, tt.wantOwner)
+				}
+			default:
+				if claims[0].Owner == "" || claims[0].Owner == "anonymous" {
+					t.Errorf("dynamic identity produced owner %q", claims[0].Owner)
+				}
+			}
+		})
 	}
-	second, ok := authenticate(nil, true, request)
-	if !ok || second.Owner != first.Owner {
-		t.Fatalf("dynamic principal changed: %#v != %#v", first, second)
+}
+
+// connectTunnel completes a tunnel handshake against tunnel and returns the
+// claims the gateway recorded for it.
+func connectTunnel(t *testing.T, tunnel *Tunnel, store *registry.Memory, headers http.Header) []registry.Claim {
+	t.Helper()
+	server := httptest.NewServer((&Server{
+		Store: store, Tunnel: tunnel, Tokens: tunnel.tokens,
+		FailOpen: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }),
+	}).Handler())
+	defer server.Close()
+
+	ws, response, err := websocket.Dial(context.Background(),
+		"ws"+strings.TrimPrefix(server.URL, "http")+ControlPrefix+"/tunnel",
+		&websocket.DialOptions{HTTPHeader: headers})
+	if response != nil && response.Body != nil {
+		defer func() { _ = response.Body.Close() }()
 	}
-	request.Header.Del("Authorization")
-	if _, ok := authenticate(nil, true, request); ok {
-		t.Fatal("dynamic identity accepted a missing bearer secret")
+	if err != nil {
+		t.Fatalf("tunnel handshake: %v", err)
+	}
+	defer func() { _ = ws.CloseNow() }()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for len(store.List()) == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	return store.List()
+}
+
+// A dynamic identity has to name the same owner every time a client reconnects
+// with its stored secret, otherwise release and per-owner limits would not follow
+// the client across sessions.
+func TestDynamicIdentityIsStableForTheSameSecret(t *testing.T) {
+	owners := make([]string, 0, 2)
+	for _, path := range []string{`["/first"]`, `["/second"]`} {
+		store := registry.NewMemory(registry.Options{MaxClaims: 64}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		tunnel := NewTunnel(store, nil)
+		tunnel.DynamicClientIdentity = true
+
+		headers := http.Header{}
+		headers.Set("Authorization", "Bearer generated-client-secret")
+		headers.Set(headerPaths, path)
+		headers.Set(headerLocal, "localhost:8080")
+
+		claims := connectTunnel(t, tunnel, store, headers)
+		if len(claims) != 1 {
+			t.Fatalf("claims for %s = %#v", path, claims)
+		}
+		owners = append(owners, claims[0].Owner)
+	}
+	if owners[0] != owners[1] {
+		t.Errorf("same secret produced owners %q and %q", owners[0], owners[1])
 	}
 }
 
