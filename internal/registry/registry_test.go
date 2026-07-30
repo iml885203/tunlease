@@ -99,47 +99,31 @@ func TestAllowlist(t *testing.T) {
 	}
 }
 
-func TestValidPath(t *testing.T) {
+// Claims enter through Create, so the path rules are asserted the way a caller
+// meets them: a claim is accepted or rejected, never by calling the validator.
+func TestCreateAcceptsAndRejectsClaimPaths(t *testing.T) {
 	for _, tt := range []struct {
+		name string
 		path string
 		want bool
 	}{
-		{"/a/*", true},
-		{"/a/**", true},
-		{"/a", true},
-		{"a/*", false},
-		{"/a/", false},
-		{"/a/*/b/*", false},
-		{"/a/**/b", false},
-		{"/*", false},
-		{"/**", false},
-		{"/" + strings.Repeat("a", MaxPathLength) + "/*", false},
+		{"exact path", "/a", true},
+		{"single-level wildcard", "/a/*", true},
+		{"recursive wildcard", "/a/**", true},
+		{"relative path", "a/*", false},
+		{"trailing slash", "/a/", false},
+		{"interior wildcard", "/a/*/b/*", false},
+		{"recursive wildcard mid-path", "/a/**/b", false},
+		{"root single-level wildcard", "/*", false},
+		{"root recursive wildcard", "/**", false},
+		{"over the length limit", "/" + strings.Repeat("a", MaxPathLength) + "/*", false},
 	} {
-		if got := ValidPath(tt.path); got != tt.want {
-			t.Errorf("ValidPath(%q)=%v", tt.path, got)
-		}
-	}
-}
-
-func TestMatchPathUsesClaimWildcardSemantics(t *testing.T) {
-	for _, test := range []struct {
-		pattern string
-		path    string
-		matches bool
-		length  int
-	}{
-		{pattern: "/callback", path: "/callback/", matches: true, length: len("/callback")},
-		{pattern: "/callback", path: "/callback/child", matches: false, length: len("/callback")},
-		{pattern: "/events/*", path: "/events/one", matches: true, length: len("/events")},
-		{pattern: "/events/*", path: "/events/one/two", matches: false, length: len("/events")},
-		{pattern: "/tree/**", path: "/tree", matches: true, length: len("/tree")},
-		{pattern: "/tree/**", path: "/tree/one/two/", matches: true, length: len("/tree")},
-	} {
-		specificity, matches := MatchPath(test.pattern, test.path)
-		if matches != test.matches || specificity != test.length {
-			t.Errorf("MatchPath(%q, %q) = %d, %v; want %d, %v",
-				test.pattern, test.path, specificity, matches, test.length, test.matches)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := testMemory(64, nil).Create("alice", []string{tt.path}, "")
+			if accepted := err == nil; accepted != tt.want {
+				t.Errorf("Create(%q) accepted = %v, want %v (err=%v)", tt.path, accepted, tt.want, err)
+			}
+		})
 	}
 }
 

@@ -518,6 +518,55 @@ func TestRepeatedExplicitReleaseRetainsNoGatewayState(t *testing.T) {
 	}, "all repeated release state to clear")
 }
 
+// Wildcard semantics decide which requests a developer actually receives, so
+// they are asserted over a live tunnel: the response body reports whether the
+// gateway routed to the local server or fell open to the original app.
+func TestClaimedWildcardsRouteRequestsToTheLocalServer(t *testing.T) {
+	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "local: %s", r.URL.Path)
+	}))
+	defer local.Close()
+	gateway := newTestGateway(t, []string{"/test/"})
+	client, err := tunnelclient.New(tunnelclient.Config{
+		Gateway: gateway.http.URL, HTTPClient: gateway.http.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.Start(context.Background(),
+		[]string{"/test/exact", "/test/events/*", "/test/tree/**"}, mustPort(t, local.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = session.Close() }()
+
+	for _, tt := range []struct {
+		name     string
+		request  string
+		reaching string
+	}{
+		{"exact claim", "/test/exact", "local"},
+		{"exact claim does not take a descendant", "/test/exact/child", "origin"},
+
+		{"single-level wildcard takes a child", "/test/events/one", "local"},
+		{"single-level wildcard does not take its base", "/test/events", "origin"},
+		{"single-level wildcard does not take a grandchild", "/test/events/one/two", "origin"},
+
+		{"recursive wildcard takes its base", "/test/tree", "local"},
+		{"recursive wildcard takes a child", "/test/tree/one", "local"},
+		{"recursive wildcard takes a grandchild", "/test/tree/one/two", "local"},
+
+		{"unclaimed path", "/test/other", "origin"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			want := tt.reaching + ": " + tt.request
+			if body := get(t, gateway.http, tt.request); body != want {
+				t.Errorf("GET %s reached %q, want %q", tt.request, body, want)
+			}
+		})
+	}
+}
+
 func get(t *testing.T, gateway *httptest.Server, path string) string {
 	t.Helper()
 	response, err := gateway.Client().Get(gateway.URL + path)
