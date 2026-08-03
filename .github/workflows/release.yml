@@ -148,7 +148,7 @@ jobs:
     with:
       version: ${{ needs.tag.outputs.version }}
     secrets:
-      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      PACKAGE_SYNC_APP_PRIVATE_KEY: ${{ secrets.PACKAGE_SYNC_APP_PRIVATE_KEY }}
 
   update-scoop:
     needs: [tag, publish-release]
@@ -156,7 +156,7 @@ jobs:
     with:
       version: ${{ needs.tag.outputs.version }}
     secrets:
-      SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+      PACKAGE_SYNC_APP_PRIVATE_KEY: ${{ secrets.PACKAGE_SYNC_APP_PRIVATE_KEY }}
 
   deploy-public-relay:
     needs: [tag, publish-images]
