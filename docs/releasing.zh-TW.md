@@ -18,15 +18,19 @@ Versioned gateway image 一出現在 GHCR，public relay deployment 就會開始
 不會等待 CLI assets、Homebrew、Scoop 或 Helm defaults。Package-manager
 updates 會等待 GitHub Release，因為它們會使用 release metadata 或 binaries。
 
-## 必要 secrets
+## 必要 release credentials
 
-將以下 fine-grained personal access tokens 設為 repository secrets：
+Package updates 使用 private `iml885203-package-sync` GitHub App。只將 App
+安裝到 `iml885203/homebrew-tap` 與 `iml885203/scoop-bucket`，並授予
+`Actions: Read and write` 與 `Contents: Read`。
 
-| Secret | 限定 repository | Repository permissions |
+設定以下 repository settings：
+
+| Setting | 類型 | 用途 |
 |---|---|---|
-| `HOMEBREW_TAP_TOKEN` | `iml885203/homebrew-tap` | `Actions: Read and write`、`Contents: Read` |
-| `SCOOP_BUCKET_TOKEN` | `iml885203/scoop-bucket` | `Actions: Read and write`、`Contents: Read` |
-| `PUBLIC_RELAY_INFRA_TOKEN` | `iml885203/tunlease-public-relay-infra` | `Actions: Read and write`、`Contents: Read` |
+| `PACKAGE_SYNC_APP_CLIENT_ID` | Variable | GitHub App client ID |
+| `PACKAGE_SYNC_APP_PRIVATE_KEY` | Secret | GitHub App private key |
+| `PUBLIC_RELAY_INFRA_TOKEN` | Secret | `iml885203/tunlease-public-relay-infra` 的 fine-grained token，權限為 `Actions: Read and write` 與 `Contents: Read` |
 
 ## 驗證或復原
 

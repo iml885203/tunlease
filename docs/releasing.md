@@ -22,15 +22,19 @@ versioned gateway image is available in GHCR; it does not wait for CLI assets,
 Homebrew, Scoop, or Helm defaults. Package-manager updates wait for the GitHub
 Release because they consume its release metadata or binaries.
 
-## Required secrets
+## Required release credentials
 
-Configure these fine-grained personal access tokens as repository secrets:
+Package updates use the private `iml885203-package-sync` GitHub App. Install
+the App only on `iml885203/homebrew-tap` and `iml885203/scoop-bucket` with
+`Actions: Read and write` and `Contents: Read`.
 
-| Secret | Restricted repository | Repository permissions |
+Configure these repository settings:
+
+| Setting | Kind | Purpose |
 |---|---|---|
-| `HOMEBREW_TAP_TOKEN` | `iml885203/homebrew-tap` | `Actions: Read and write`, `Contents: Read` |
-| `SCOOP_BUCKET_TOKEN` | `iml885203/scoop-bucket` | `Actions: Read and write`, `Contents: Read` |
-| `PUBLIC_RELAY_INFRA_TOKEN` | `iml885203/tunlease-public-relay-infra` | `Actions: Read and write`, `Contents: Read` |
+| `PACKAGE_SYNC_APP_CLIENT_ID` | Variable | GitHub App client ID |
+| `PACKAGE_SYNC_APP_PRIVATE_KEY` | Secret | GitHub App private key |
+| `PUBLIC_RELAY_INFRA_TOKEN` | Secret | Fine-grained token for `iml885203/tunlease-public-relay-infra` with `Actions: Read and write` and `Contents: Read` |
 
 ## Verify or recover
 
