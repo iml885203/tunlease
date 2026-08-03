@@ -8,8 +8,8 @@ on:
         required: true
         type: string
     secrets:
-      SCOOP_BUCKET_TOKEN:
-        description: Fine-grained token for the scoop-bucket Actions API
+      PACKAGE_SYNC_APP_PRIVATE_KEY:
+        description: Private key for the package-sync GitHub App
         required: true
   workflow_dispatch:
     inputs:
@@ -21,45 +21,30 @@ on:
 jobs:
   update:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - name: Dispatch bucket updater and wait for completion
+      - uses: actions/checkout@v6
+      - name: Generate Scoop sync token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.PACKAGE_SYNC_APP_CLIENT_ID }}
+          private-key: ${{ secrets.PACKAGE_SYNC_APP_PRIVATE_KEY }}
+          owner: iml885203
+          repositories: scoop-bucket
+          permission-actions: write
+          permission-contents: read
+      - uses: ./.github/actions/sync-package-repository
+        with:
+          repository: iml885203/scoop-bucket
+          token: ${{ steps.app-token.outputs.token }}
+          version: ${{ inputs.version }}
+      - name: Verify the manifest
         env:
-          GH_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           VERSION: ${{ inputs.version }}
         run: |
-          previous_run_id=$(gh run list \
-            --repo iml885203/scoop-bucket \
-            --workflow update.yml \
-            --event workflow_dispatch \
-            --limit 1 \
-            --json databaseId \
-            --jq '.[0].databaseId')
-
-          gh workflow run update.yml \
-            --repo iml885203/scoop-bucket \
-            --ref main
-
-          for _ in $(seq 1 20); do
-            run_id=$(gh run list \
-              --repo iml885203/scoop-bucket \
-              --workflow update.yml \
-              --event workflow_dispatch \
-              --limit 1 \
-              --json databaseId \
-              --jq '.[0].databaseId')
-            [ -n "$run_id" ] && [ "$run_id" != "$previous_run_id" ] && break
-            run_id=
-            sleep 3
-          done
-          [ -n "${run_id:-}" ] || {
-            echo "Scoop bucket updater did not start" >&2
-            exit 1
-          }
-
-          gh run watch "$run_id" \
-            --repo iml885203/scoop-bucket \
-            --exit-status
-
+          set -euo pipefail
           manifest_version=$(gh api \
             repos/iml885203/scoop-bucket/contents/bucket/tunlease.json \
             --jq '.content' |

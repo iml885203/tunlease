@@ -1,0 +1,35 @@
+name: Sync package repository
+description: Dispatch and wait for a Tunlease package metadata update
+inputs:
+  repository:
+    description: Package repository to update
+    required: true
+  token:
+    description: Token allowed to dispatch and inspect the package repository
+    required: true
+  version:
+    description: Exact Tunlease release tag
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        REPOSITORY: ${{ inputs.repository }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        correlation="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+        display_title="Update tunlease ${VERSION} ${correlation}"
+        gh workflow run update.yml --repo "$REPOSITORY" --ref main \
+          -f project=tunlease -f version="$VERSION" -f correlation="$correlation"
+        for _ in $(seq 1 20); do
+          run_id=$(gh run list --repo "$REPOSITORY" --workflow update.yml \
+            --event workflow_dispatch --limit 50 --json databaseId,displayTitle \
+            --jq ".[] | select(.displayTitle == \"$display_title\") | .databaseId" | head -n 1)
+          [ -z "$run_id" ] || break
+          sleep 3
+        done
+        [ -n "${run_id:-}" ] || { echo "$REPOSITORY updater did not start" >&2; exit 1; }
+        gh run watch "$run_id" --repo "$REPOSITORY" --exit-status
