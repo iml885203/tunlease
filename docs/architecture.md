@@ -21,17 +21,9 @@ for health, list/release, and the tunnel WebSocket. Every other path is data
 traffic. When configured, the origin must use a separate internal URL that
 cannot loop through the public gateway.
 
-```mermaid
-flowchart LR
-    ThirdParty["Third party"] --> Gateway["Gateway"]
-    subgraph Shared["Shared environment"]
-      Gateway --> Origin["Original app"]
-    end
-    subgraph Developer["Developer machine"]
-      CLI["tul CLI"] --> Local["Local service"]
-    end
-    Gateway --> CLI
-```
+<p align="center">
+  <img src="../assets/request-flow.svg" alt="Third party calls the gateway's fixed URL; claimed paths tunnel to your local service, every other path goes to the original app" width="960">
+</p>
 
 ## Session lifecycle
 

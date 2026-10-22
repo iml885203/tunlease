@@ -20,17 +20,9 @@ durable lease。
 list/release 與 tunnel WebSocket；其餘都是 data traffic。若有設定 origin，
 它必須使用不會繞回 public gateway 的獨立內部 URL。
 
-```mermaid
-flowchart LR
-    ThirdParty["第三方"] --> Gateway["Gateway"]
-    subgraph Shared["共用環境"]
-      Gateway --> Origin["原始 app"]
-    end
-    subgraph Developer["開發者電腦"]
-      CLI["tul CLI"] --> Local["本機服務"]
-    end
-    Gateway --> CLI
-```
+<p align="center">
+  <img src="../assets/request-flow.zh-TW.svg" alt="第三方呼叫 gateway 固定 URL；已認領的 path 經 tunnel 到本機服務，其他 path 回原始 app" width="960">
+</p>
 
 ## Session lifecycle
 

@@ -20,27 +20,9 @@ tul claim '/demo/my-tunnel/' -p 8080 -g tunlease-relay.dotw.me
 
 ## 運作方式
 
-```mermaid
-flowchart LR
-    TP["第三方<br/>(例如 Stripe)"] -->|"呼叫固定 URL"| GW[tunlease gateway]
-
-    subgraph Shared["共用環境"]
-        GW[tunlease gateway]
-        App[原始 app]
-        GW -->|"其他所有 path<br/>(fail-open)"| App
-    end
-
-    subgraph Developer["開發者電腦"]
-        CLI[tul CLI]
-        Local[你的本機服務]
-        CLI -->|"反向 tunnel"| Local
-    end
-
-    GW -->|"已認領的 path"| CLI
-
-    classDef tunlease fill:#dbeafe,stroke:#2563eb,color:#1e3a8a,stroke-width:2px;
-    class GW,CLI tunlease;
-```
+<p align="center">
+  <img src="assets/request-flow.zh-TW.svg" alt="第三方呼叫 gateway 固定 URL；已認領的 path 經 tunnel 到本機服務，其他 path 回原始 app" width="960">
+</p>
 
 Gateway 接收固定 host 的流量並依 path 分流：**已認領**且 tunnel 已連線的 path
 到達你的電腦；其他 path proxy 到設定的原 app。藍色節點是 Tunlease 的；其餘本來就存在。

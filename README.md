@@ -21,27 +21,9 @@ path you claim.
 
 ## How it works
 
-```mermaid
-flowchart LR
-    TP["Third party<br/>(e.g. Stripe)"] -->|"calls the fixed URL"| GW[tunlease gateway]
-
-    subgraph Shared["Shared environment"]
-        GW[tunlease gateway]
-        App[Original app]
-        GW -->|"every other path<br/>(fail-open)"| App
-    end
-
-    subgraph Developer["Developer machine"]
-        CLI[tul CLI]
-        Local[Your local service]
-        CLI -->|"reverse tunnel"| Local
-    end
-
-    GW -->|"claimed path"| CLI
-
-    classDef tunlease fill:#dbeafe,stroke:#2563eb,color:#1e3a8a,stroke-width:2px;
-    class GW,CLI tunlease;
-```
+<p align="center">
+  <img src="assets/request-flow.svg" alt="Third party calls the gateway's fixed URL; claimed paths tunnel to your local service, every other path goes to the original app" width="960">
+</p>
 
 The gateway receives the fixed host's traffic and forks by path: a **claimed**
 path with a connected tunnel reaches localhost; every other path is proxied
