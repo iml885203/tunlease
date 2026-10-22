@@ -68,6 +68,14 @@ h1 em { color: var(--blue); font-style: normal; }
 .route { display: flex; align-items: center; gap: 12px; margin-top: 34px; color: var(--soft); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
 .route strong { display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; color: var(--ink); background: #fffdf6; border: 1px solid var(--ink); box-shadow: 3px 3px 0 var(--mint); }
 .route strong img { border-radius: 5px; }
+.forks { position: relative; display: grid; gap: 10px; margin: 0; padding: 0 0 0 22px; list-style: none; }
+.forks::before { content: ""; position: absolute; left: 0; top: 50%; width: 10px; border-top: 1px solid var(--soft); }
+.forks::after { content: ""; position: absolute; left: 10px; top: 9px; bottom: 9px; border-left: 1px solid var(--soft); }
+.forks li { position: relative; display: flex; align-items: center; gap: 10px; white-space: nowrap; opacity: .62; }
+.forks li::before { content: ""; position: absolute; left: -12px; top: 50%; width: 8px; border-top: 1px solid var(--soft); }
+.forks code { font: inherit; }
+.forks .claimed { color: var(--ink); opacity: 1; }
+.forks .claimed code { color: var(--blue); font-weight: 700; }
 
 .terminal { overflow: hidden; color: #e7f4ef; background: var(--terminal); border: 1px solid #243b35; border-radius: 8px; box-shadow: 14px 16px 0 rgba(23, 107, 135, .16); }
 .terminal-bar { height: 42px; display: flex; align-items: center; border-bottom: 1px solid #20322e; padding: 0 14px; color: #8fa9a2; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
@@ -117,6 +125,11 @@ footer {
   h1 { font-size: clamp(38px, 10.4vw, 48px); }
   .route { gap: 7px; font-size: 10px; }
   .route strong { padding: 6px 7px; }
+  .forks { padding-left: 16px; gap: 8px; }
+  .forks::before { width: 7px; }
+  .forks::after { left: 7px; }
+  .forks li { gap: 6px; }
+  .forks li::before { left: -9px; width: 6px; }
   .block { padding: 21px 17px; }
   .tabs { overflow-x: auto; }
   .tabs button { white-space: nowrap; }

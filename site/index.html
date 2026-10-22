@@ -53,8 +53,12 @@
         <a class="button primary" href="https://github.com/iml885203/tunlease">View on GitHub</a>
         <a class="button" href="https://github.com/iml885203/tunlease/blob/main/docs/self-hosting.md">Self-hosting guide</a>
       </div>
-      <div class="route" aria-label="Provider traffic is routed through Tunlease to localhost">
-        <span>Provider</span><i>→</i><strong><img src="icon.svg" width="20" height="20" alt=""> Tunlease</strong><i>→</i><span>localhost:8080</span>
+      <div class="route" aria-label="Provider traffic reaches Tunlease; your claimed path goes to localhost and every other path goes to the real app">
+        <span>Provider</span><i>→</i><strong><img src="icon.svg" width="20" height="20" alt=""> Tunlease</strong>
+        <ul class="forks">
+          <li class="claimed"><code>/your-path/</code><i>→</i><span>localhost:8080</span></li>
+          <li><code>other paths</code><i>→</i><span>real app</span></li>
+        </ul>
       </div>
     </section>
 
