@@ -19,26 +19,50 @@
     api_host: 'https://us.i.posthog.com',
     defaults: '2026-05-30',
     person_profiles: 'identified_only',
-    autocapture: false,
+    autocapture: {dom_event_allowlist: ['click'], element_allowlist: ['a', 'button'], capture_copied_text: false},
+    mask_all_text: true,
+    mask_all_element_attributes: true,
+    disable_capture_url_hashes: true,
     capture_pageview: 'history_change',
     capture_pageleave: true,
-    disable_session_recording: true,
+    disable_session_recording: false,
+    enable_recording_console_log: false,
+    session_recording: {
+      sampleRate: 1,
+      maskAllInputs: true,
+      maskTextSelector: '[contenteditable], [data-private], .ph-mask',
+      blockSelector: 'input[type="file"], [data-private], .ph-no-capture',
+      recordCrossOriginIframes: false,
+      recordBody: false,
+      recordHeaders: false,
+      maskCapturedNetworkRequestFn(request) {
+        return request.isInitial ? {...request, name: withoutQuery(request.name)} : null;
+      },
+      maskAttributeFn(name, value) {
+        if (name === 'value' || name.startsWith('data-')) return '***';
+        if (['href', 'src', 'action'].includes(name)) return withoutQuery(new URL(value, location.href).href);
+        return value;
+      },
+    },
     disable_surveys: true,
     capture_exceptions: false,
     capture_dead_clicks: false,
-    capture_heatmaps: false,
-    capture_performance: false,
+    capture_heatmaps: true,
+    capture_performance: {web_vitals: true, network_timing: false},
     rageclick: false,
     before_send(event) {
-      if (!['$pageview', '$pageleave', 'project_link_clicked'].includes(event.event)) return null;
-      for (const properties of [event.properties, event.$set, event.$set_once, event.properties.$set, event.properties.$set_once]) {
-        if (!properties) continue;
-        for (const key of Object.keys(properties)) {
-          if (typeof properties[key] === 'string' && /^https?:\/\//i.test(properties[key])) {
-            properties[key] = withoutQuery(properties[key]);
-          }
+      if (!['$pageview', '$pageleave', 'project_link_clicked', '$autocapture', '$web_vitals', '$$heatmap', '$snapshot'].includes(event.event)) return null;
+      function redact(value) {
+        if (typeof value === 'string') return /^https?:\/\//i.test(value) ? withoutQuery(value) : value;
+        if (Array.isArray(value)) return value.map(redact);
+        if (value && typeof value === 'object') {
+          return Object.fromEntries(Object.entries(value).map(([key, item]) => [
+            /^https?:\/\//i.test(key) ? withoutQuery(key) : key, redact(item),
+          ]));
         }
+        return value;
       }
+      event = redact(event);
       event.properties.product = product;
       event.properties.site_domain = location.hostname;
       return event;

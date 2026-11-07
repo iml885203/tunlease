@@ -104,4 +104,4 @@ callback，包含其中的資料與 credential。請先啟動本機服務、只 
 
 ## 網站分析
 
-公開網站使用 PostHog Cloud（美國區）記錄頁面瀏覽、離開與專案連結點擊，並以 `product`、`site_domain` 區分與 Logan 其他公開網站共用的 project。送出前移除 URL 查詢參數與片段。僅正式網站網域啟用，遵循 Do Not Track 與 Global Privacy Control。停用操作錄影、全面自動捕捉與使用者身分識別，不追蹤本機應用程式或 CLI。瀏覽器的 project token 為公開資訊；不得將可讀取分析資料的憑證放進前端。
+公開網站使用 PostHog Cloud（美國區）記錄頁面瀏覽、離開與專案連結點擊，並以 `product`、`site_domain` 區分與 Logan 其他公開網站共用的 project。送出前移除 URL 查詢參數與片段。僅正式網站網域啟用，遵循 Do Not Track 與 Global Privacy Control。啟用連結／按鈕點擊自動捕捉、熱區圖與 Web vitals，符合條件的 session 以 100% 比例錄製並遮蔽所有輸入；關閉 console、網路內容／標頭及網路時間紀錄，不進行使用者身分識別，不追蹤本機應用程式或 CLI。瀏覽器的 project token 為公開資訊；不得將可讀取分析資料的憑證放進前端。
