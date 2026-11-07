@@ -101,3 +101,7 @@ callback，包含其中的資料與 credential。請先啟動本機服務、只 
 ## 授權
 
 [MIT](LICENSE)
+
+## 網站分析
+
+公開網站使用 PostHog Cloud（美國區）記錄頁面瀏覽、離開與專案連結點擊，並以 `product`、`site_domain` 區分與 Logan 其他公開網站共用的 project。送出前移除 URL 查詢參數與片段。僅正式網站網域啟用，遵循 Do Not Track 與 Global Privacy Control。停用操作錄影、全面自動捕捉與使用者身分識別，不追蹤本機應用程式或 CLI。瀏覽器的 project token 為公開資訊；不得將可讀取分析資料的憑證放進前端。

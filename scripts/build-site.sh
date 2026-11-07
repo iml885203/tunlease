@@ -6,7 +6,7 @@ root=$(CDPATH='' cd -- "$script_dir/.." && pwd)
 output=${1:-"$root/_site"}
 
 mkdir -p "$output"
-cp "$root/site/index.html" "$root/site/styles.css" "$root/site/site.js" "$output/"
+cp "$root/site/index.html" "$root/site/styles.css" "$root/site/site.js" "$root/site/analytics.js" "$output/"
 cp "$root/site/og-image-v2.png" "$output/og-image-v2.png"
 cp "$root/site/CNAME" "$output/CNAME"
 cp "$root/assets/icon.svg" "$output/icon.svg"
