@@ -55,6 +55,7 @@
       function redact(value) {
         if (typeof value === 'string') return /^https?:\/\//i.test(value) ? withoutQuery(value) : value;
         if (Array.isArray(value)) return value.map(redact);
+        if (Object.prototype.toString.call(value) === '[object Date]') return value;
         if (value && typeof value === 'object') {
           return Object.fromEntries(Object.entries(value).map(([key, item]) => [
             /^https?:\/\//i.test(key) ? withoutQuery(key) : key, redact(item),
