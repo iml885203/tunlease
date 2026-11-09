@@ -1,6 +1,6 @@
 (() => {
   const product = 'tunlease';
-  if (location.hostname !== product + '.dotw.me' || window.posthog ||
+  if (location.hostname !== product + '.ilogan.app' || window.posthog ||
       navigator.doNotTrack === '1' || navigator.globalPrivacyControl === true) return;
 
   // PostHog's public browser loader queues events until its asynchronous SDK arrives.
@@ -75,6 +75,8 @@
     if (!link) return;
     const destination = new URL(link.href, location.href);
     const projects = {
+      'ilogan.app': 'about', 'about.ilogan.app': 'about', 'blog.ilogan.app': 'blog',
+      'orbit.ilogan.app': 'orbit', 'tunlease.ilogan.app': 'tunlease',
       'about.dotw.me': 'about', 'blog.dotw.me': 'blog',
       'orbit.dotw.me': 'orbit', 'tunlease.dotw.me': 'tunlease',
     };
