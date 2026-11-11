@@ -6,7 +6,7 @@ Claim one path on an existing fixed endpoint; its live traffic reaches
 localhost while every other path keeps serving the real app. Ctrl+C to release.
 
 ```bash
-tul claim '/demo/my-tunnel/' -p 8080 -g tunlease-relay.dotw.me
+tul claim '/demo/my-tunnel/' -p 8080 -g tunlease-relay.ilogan.app
 ```
 
 ![Claiming a path on the public Tunlease demo relay and forwarding it to a server on localhost](assets/demo.gif)
@@ -70,7 +70,7 @@ irm https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/install.ps
 Then claim the callback path:
 
 ```bash
-tul claim '/demo/my-tunnel/' -p 8080 -g tunlease-relay.dotw.me
+tul claim '/demo/my-tunnel/' -p 8080 -g tunlease-relay.ilogan.app
 ```
 
 Ctrl+C releases it. To use your own fixed callback host instead of the public
@@ -78,7 +78,7 @@ demo, see [Self-hosting Tunlease](docs/self-hosting.md).
 
 > [!WARNING]
 > **Don't use the public relay for a real webhook.** Claims on
-> `tunlease-relay.dotw.me` expire after **1 minute**, so the callback stops
+> `tunlease-relay.ilogan.app` expire after **1 minute**, so the callback stops
 > arriving right away. It is only for trying the CLI. For real use, run
 > [your own gateway](docs/self-hosting.md).
 

@@ -6,7 +6,7 @@
 照常打到真正的 app。Ctrl+C 釋放。
 
 ```bash
-tul claim '/demo/my-tunnel/' -p 8080 -g tunlease-relay.dotw.me
+tul claim '/demo/my-tunnel/' -p 8080 -g tunlease-relay.ilogan.app
 ```
 
 ![在 Tunlease public demo relay claim path，並將流量轉送到 localhost 上的服務](assets/demo.gif)
@@ -65,14 +65,14 @@ irm https://raw.githubusercontent.com/iml885203/tunlease/main/scripts/install.ps
 接著 claim callback path：
 
 ```bash
-tul claim '/demo/my-tunnel/' -p 8080 -g tunlease-relay.dotw.me
+tul claim '/demo/my-tunnel/' -p 8080 -g tunlease-relay.ilogan.app
 ```
 
 Ctrl+C 釋放。若要使用自己的固定 callback host，而不是 public demo，請看
 [自行架設 Tunlease](docs/self-hosting.zh-TW.md)。
 
 > [!WARNING]
-> **不要用 public relay 接真的 webhook。** `tunlease-relay.dotw.me` 上的 claim
+> **不要用 public relay 接真的 webhook。** `tunlease-relay.ilogan.app` 上的 claim
 > **1 分鐘**就過期，callback 馬上就收不到了。它只能用來試 CLI。真正要用，請架
 > [自己的 gateway](docs/self-hosting.zh-TW.md)。
 
